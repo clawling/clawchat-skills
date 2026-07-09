@@ -3,7 +3,7 @@ name: tarot-arcana
 display_name: Tarot Arcana
 description: Tarot card drawing and interpretation — draws real cards via a local script, never fabricates results. Supports one-card and three-card spreads with structured psychological analysis.
 category: creative
-version: 0.23.0
+version: 0.23.1
 metadata:
   hermes:
     tags: [Creative, Tarot, Reflection, Liveware]
@@ -37,6 +37,7 @@ Do not present tarot as proof, diagnosis, professional advice, or guaranteed pre
 | Question templates | `skill_view(name='tarot-arcana', file_path='references/question-framework.md')` |
 | Install liveware (first time) | `bash liveware/scripts/setup.sh` (from skill dir) |
 | Activate liveware (daily) | `bash liveware/scripts/start.sh` (from skill dir) |
+| Liveware app reference | `skill_view(name='tarot-arcana', file_path='references/liveware-app.md')` |
 
 Run commands from the skill directory so relative paths resolve. The draw script requires `node` in PATH (Node.js built-ins only, no npm packages).
 
@@ -125,20 +126,7 @@ bash liveware/scripts/start.sh
 
 ### API endpoints
 
-- `POST /api/interpret` — submits card/question data to the Hermes API Server for interpretation. The API-server agent uses this skill to analyze and return the reading.
-- `GET /api/deck` — serves 78-card deck data for the frontend.
-
-Readings are saved to `~/tarot-readings/` with an `index.json` history and individual markdown files.
-
-### Question guidance (frontend copy principles)
-
-| Layer | Role |
-|-------|------|
-| Steps | Tell the user what to do at each stage |
-| Placeholder | A real, relatable example question |
-| Hint | Explains the structure of a good question |
-
-No negative framing — tell the user what TO do, not what NOT to do.
+See `skill_view(name='tarot-arcana', file_path='references/liveware-app.md')` for API endpoint details and readings storage.
 
 ## Post-reading follow-up
 
