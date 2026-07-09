@@ -3,7 +3,7 @@ name: tarot-arcana
 display_name: Tarot Arcana
 description: Tarot card drawing and interpretation — draws real cards via a local script, never fabricates results. Supports one-card and three-card spreads with structured psychological analysis.
 category: creative
-version: 0.22.3
+version: 0.23.0
 metadata:
   hermes:
     tags: [Creative, Tarot, Reflection, Liveware]
