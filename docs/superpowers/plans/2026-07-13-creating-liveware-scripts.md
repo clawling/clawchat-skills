@@ -1319,6 +1319,18 @@ git commit -m "feat: render liveware start adapters"
 - Produces: `validate_target(target: Path, analysis: dict[str, object] | None = None) -> list[Finding]` and JSON CLI output
 - Finding schema: `code`, `path`, and `message`
 
+**Human-approved semantic-validation amendment (overrides superficial string heuristics below):**
+
+- Parse setup Python with AST. Comments and unused strings must not satisfy login, registration, Hermes app creation, state identity, permission, atomic-write, forbidden-operation, credential, or `shell` rules.
+- Inspect structured argv/call data so forbidden installs, downloads/piped execution, app deletion, first-app fallback, credential environment reads, and subprocess shell use are detected across ordinary quoting and formatting variants.
+- Parse start markers as exact whole lines with one ordered, non-nested pair for both adapter and binding blocks. Parse binding commands structurally so unrelated loopback/static text cannot mask a non-loopback dynamic upstream.
+- Detect setup invocation behavior independently from the approved guidance message. Detect unknown-process termination forms while allowing only a PID proven to be an owned child from `$!`.
+- With analysis, require schema version 1, `ready` status, no issues, matching non-empty `target_root`, stable identity, and canonical setup/start output consistent with every adapter field (kind, command, workdir, required commands, port, readiness, log, and static directory).
+- Reuse or load the reviewed renderer as the canonical consistency oracle without executing generated scripts. Treat renderer rejection or output mismatch as `LW018`/`LW019` findings.
+- Catch unreadable, malformed, or non-object analysis input and return deterministic JSON findings with exit status 1; do not leak tracebacks or argparse-only text for these contract failures.
+- Add RED-first behavioral tests for every finding family, comments/unused-string bypasses, alternate quoting/argv forms, first-app indexing, setup invocation plus guidance, kill variants/owned-child distinction, marker/binding bypasses, stable state identity, unresolved/mismatched analysis, all adapter fields, Bash syntax, and CLI JSON/exit behavior.
+- Keep validation static and read-only. Never execute generated setup/start scripts or create fake runtime success.
+
 - [ ] **Step 1: Write failing validator tests**
 
 Create `test_validate_scripts.py`:
