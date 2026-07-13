@@ -1323,8 +1323,12 @@ git commit -m "feat: render liveware start adapters"
 
 - Parse setup Python with AST. Comments and unused strings must not satisfy login, registration, Hermes app creation, state identity, permission, atomic-write, forbidden-operation, credential, or `shell` rules.
 - Inspect structured argv/call data so forbidden installs, downloads/piped execution, app deletion, first-app fallback, credential environment reads, and subprocess shell use are detected across ordinary quoting and formatting variants.
+- Resolve local literal argv variables, literal `**kwargs`, and sequential shell assignments/commands conservatively. Validate call provenance instead of accepting an unrelated function with the same final name.
+- Tie state identity/mode/atomic findings to the dictionary actually serialized by the state writer and to real `json`/`os` filesystem APIs; unrelated dictionaries or fake `.replace()`/`.chmod()` methods must not satisfy or trigger state rules.
 - Parse start markers as exact whole lines with one ordered, non-nested pair for both adapter and binding blocks. Parse binding commands structurally so unrelated loopback/static text cannot mask a non-loopback dynamic upstream.
+- Require the binding command head and argument positions to match the Liveware CLI invocation; `echo`/`false` text containing `tunnel bind` is not a binding.
 - Detect setup invocation behavior independently from the approved guidance message. Detect unknown-process termination forms while allowing only a PID proven to be an owned child from `$!`.
+- Parse valid quoted heredoc delimiters containing hyphens, direct shell credential commands, variable-executed setup paths, wrappers such as `builtin kill`, and same-line sequential PID ownership updates.
 - With analysis, require schema version 1, `ready` status, no issues, matching non-empty `target_root`, stable identity, and canonical setup/start output consistent with every adapter field (kind, command, workdir, required commands, port, readiness, log, and static directory).
 - Reuse or load the reviewed renderer as the canonical consistency oracle without executing generated scripts. Treat renderer rejection or output mismatch as `LW018`/`LW019` findings.
 - Catch unreadable, malformed, or non-object analysis input and return deterministic JSON findings with exit status 1; do not leak tracebacks or argparse-only text for these contract failures.

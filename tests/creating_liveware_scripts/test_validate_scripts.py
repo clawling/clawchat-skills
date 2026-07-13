@@ -380,7 +380,12 @@ class ValidateScriptsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             analysis = self.analysis(Path(tmp))
             valid_setup, start = self.generated(analysis)
-        indexing = valid_setup + '\napps = []\napp_id = apps[0]["id"] if apps else None\n'
+        indexing = valid_setup + """
+def unsafe_first_index(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    apps = json.loads(raw)
+    return apps[0]["id"] if apps else None
+"""
         for name, setup in (("unfiltered-loop", office), ("first-index", indexing)):
             with self.subTest(name=name):
                 self.assert_finding(
@@ -628,6 +633,413 @@ class ValidateScriptsTests(unittest.TestCase):
             self.assertEqual(invalid.stderr, "")
             payload = json.loads(invalid.stdout)
             self.assertEqual([item["code"] for item in payload], ["LW005"])
+
+    def test_literal_argv_and_kwargs_are_resolved_within_their_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        argv = setup + """
+def unsafe_install():
+    command = ["pip", "install", "package"]
+    subprocess.run(command)
+"""
+        with self.subTest(case="argv"):
+            self.assert_finding(
+                self.validator.validate_texts(argv, start),
+                "LW011",
+                "liveware/scripts",
+                "Scripts contain a forbidden install, download, or app deletion operation.",
+            )
+
+        kwargs = setup + """
+def unsafe_shell():
+    options = {"shell": True}
+    subprocess.run(["tool"], **options)
+"""
+        with self.subTest(case="kwargs"):
+            self.assert_finding(
+                self.validator.validate_texts(kwargs, start),
+                "LW007",
+                "liveware/scripts/setup.py",
+                "Python subprocess uses a shell value other than literal False.",
+            )
+
+        safe = setup + """
+def safe_shell():
+    options = {"shell": False}
+    subprocess.run(["tool"], **options)
+
+def unrelated_scope():
+    command = ["pip", "install", "package"]
+
+def unresolved_in_this_scope():
+    subprocess.run(command)
+"""
+        codes = {item.code for item in self.validator.validate_texts(safe, start)}
+        self.assertNotIn("LW007", codes)
+        self.assertNotIn("LW011", codes)
+
+        conditional = setup + """
+def conditionally_overwritten(flag):
+    command = ["pip", "install", "package"]
+    options = {"shell": True}
+    if flag:
+        command = ["tool"]
+        options = {"shell": False}
+    subprocess.run(command, **options)
+"""
+        with self.subTest(case="conditional-merge"):
+            conditional_codes = {item.code for item in self.validator.validate_texts(conditional, start)}
+            self.assertIn("LW007", conditional_codes)
+            self.assertIn("LW011", conditional_codes)
+
+        loop_merge = setup + """
+def loop_overwrite():
+    command = ["pip", "install", "package"]
+    for _ in []:
+        command = ["tool"]
+    subprocess.run(command)
+
+def while_overwrite():
+    options = {"shell": True}
+    while False:
+        options = {"shell": False}
+    subprocess.run(["tool"], **options)
+"""
+        with self.subTest(case="loop-merge"):
+            loop_codes = {item.code for item in self.validator.validate_texts(loop_merge, start)}
+            self.assertIn("LW007", loop_codes)
+            self.assertIn("LW011", loop_codes)
+
+        cleared = setup + """
+def cleared_values():
+    command = ["pip", "install", "package"]
+    command.clear()
+    command.extend(["tool"])
+    options = {"shell": True}
+    options.clear()
+    subprocess.run(command, **options)
+
+def precisely_mutated_values():
+    command = ["pip", "install", "package"]
+    command.pop(0)
+    options = {"shell": True}
+    options.update({"shell": False})
+    subprocess.run(command, **options)
+"""
+        with self.subTest(case="cleared-literals"):
+            cleared_codes = {item.code for item in self.validator.validate_texts(cleared, start)}
+            self.assertNotIn("LW007", cleared_codes)
+            self.assertNotIn("LW011", cleared_codes)
+
+        reversed_safe = setup + """
+command = ["pip", "install", "package"]
+command.reverse()
+subprocess.run(command)
+"""
+        reversed_unsafe = setup + """
+command = ["package", "install", "pip"]
+command.reverse()
+subprocess.run(command)
+"""
+        with self.subTest(case="reversed-safe"):
+            self.assertNotIn("LW011", {item.code for item in self.validator.validate_texts(reversed_safe, start)})
+        with self.subTest(case="reversed-unsafe"):
+            self.assertIn("LW011", {item.code for item in self.validator.validate_texts(reversed_unsafe, start)})
+
+    def test_binding_requires_exact_liveware_command_head_and_positions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp), "managed-command")
+            setup, start = self.generated(analysis)
+        binding = '"$LIVEWARE_BIN" tunnel bind "$APP_ID" "http://127.0.0.1:${PORT}"'
+        invalid = {
+            "echo-prefix": start.replace(binding, f"echo {binding}"),
+            "false-prefix": start.replace(binding, f"false {binding}"),
+            "swapped-arguments": start.replace(
+                binding,
+                '"$LIVEWARE_BIN" tunnel bind "http://127.0.0.1:${PORT}" "$APP_ID"',
+            ),
+        }
+        for name, candidate in invalid.items():
+            with self.subTest(name=name):
+                self.assert_finding(
+                    self.validator.validate_texts(setup, candidate),
+                    "LW013",
+                    "liveware/scripts/start.sh",
+                    "Liveware binding is missing, ambiguous, or not explicitly loopback-only.",
+                )
+
+    def test_state_contract_tracks_the_serialized_object_and_real_filesystem_apis(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        ordered = "        os.chmod(temp_name, 0o600)\n        os.replace(temp_name, STATE_FILE)\n"
+        misordered = setup.replace(ordered, "").replace(
+            "    handle, temp_name = tempfile.mkstemp(prefix=f\".{SKILL_NAME}.\", suffix=\".json\", dir=STATE_ROOT)\n    try:",
+            "    handle, temp_name = tempfile.mkstemp(prefix=f\".{SKILL_NAME}.\", suffix=\".json\", dir=STATE_ROOT)\n"
+            "    os.chmod(temp_name, 0o600)\n"
+            "    os.replace(temp_name, STATE_FILE)\n"
+            "    try:",
+        )
+        split_branches = setup.replace(
+            "            json.dump(state, stream, ensure_ascii=False, indent=2, sort_keys=True)",
+            "            if registered:\n"
+            "                json.dump(state, stream, ensure_ascii=False, indent=2, sort_keys=True)",
+        ).replace(
+            ordered,
+            "        if not registered:\n"
+            "            os.chmod(temp_name, 0o600)\n"
+            "            os.replace(temp_name, STATE_FILE)\n",
+        )
+        invalid = {
+            "serialized-wrapper": setup.replace(
+                "json.dump(state, stream, ensure_ascii=False, indent=2, sort_keys=True)",
+                "other_state = {\"payload\": state}\n            json.dump(other_state, stream, ensure_ascii=False, indent=2, sort_keys=True)",
+            ),
+            "fake-chmod": setup.replace("os.chmod(temp_name, 0o600)", "guard.chmod(temp_name, 0o600)"),
+            "fake-replace": setup.replace(
+                "os.replace(temp_name, STATE_FILE)", "guard.replace(temp_name, STATE_FILE)"
+            ),
+            "different-temp": setup.replace(
+                "os.chmod(temp_name, 0o600)\n        os.replace(temp_name, STATE_FILE)",
+                "handle_2, temp_name_2 = tempfile.mkstemp(dir=STATE_ROOT)\n"
+                "        os.close(handle_2)\n"
+                "        os.chmod(temp_name_2, 0o600)\n"
+                "        os.replace(temp_name_2, STATE_FILE)",
+            ),
+            "reassigned-temp": setup.replace(
+                "os.chmod(temp_name, 0o600)",
+                'temp_name = "/tmp/unrelated.json"\n        os.chmod(temp_name, 0o600)',
+            ),
+            "misordered-write": misordered,
+            "mutually-exclusive-write": split_branches,
+        }
+        for name, candidate in invalid.items():
+            with self.subTest(name=name):
+                self.assert_finding(
+                    self.validator.validate_texts(candidate, start),
+                    "LW017",
+                    "liveware/scripts/setup.py",
+                    "State persistence is not atomic with required permissions and stable identity.",
+                )
+
+        unrelated = setup + """
+UNRELATED = {
+    "schema_version": SCHEMA_VERSION,
+    "skill_name": SKILL_NAME,
+    "app_name": CLAWCHAT_APP_NAME,
+}
+
+def unrelated_file(temp_name):
+    guard.chmod(temp_name, 0o644)
+    guard.replace(temp_name, STATE_FILE)
+
+def unrelated_metadata(stream):
+    STATE_ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
+    json.dump(UNRELATED, stream)
+"""
+        self.assertNotIn("LW017", {item.code for item in self.validator.validate_texts(unrelated, start)})
+
+    def test_hyphenated_quoted_python_heredocs_are_semantically_inspected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        cases = {
+            "kill": (
+                "python3 - <<'PY-CHECK'\nimport os\nos.kill(123, 15)\nPY-CHECK\n",
+                "LW010",
+                "liveware/scripts/start.sh",
+                "Start can terminate a process it cannot prove it owns.",
+            ),
+            "credential": (
+                'python3 - <<"PY-CREDENTIAL"\nimport os\nvalue = os.environ["API_KEY"]\nPY-CREDENTIAL\n',
+                "LW015",
+                "liveware/scripts",
+                "Scripts read a credential environment variable directly.",
+            ),
+            "forbidden": (
+                "python3 - <<'PY-INSTALL'\nimport subprocess\nsubprocess.run(['pip', 'install', 'package'])\nPY-INSTALL\n",
+                "LW011",
+                "liveware/scripts",
+                "Scripts contain a forbidden install, download, or app deletion operation.",
+            ),
+            "env-python": (
+                "env CHECK=1 python3 - <<'PY-ENV'\nimport subprocess\nsubprocess.run(['pip', 'install', 'package'])\nPY-ENV\n",
+                "LW011",
+                "liveware/scripts",
+                "Scripts contain a forbidden install, download, or app deletion operation.",
+            ),
+        }
+        for name, (addition, code, path, message) in cases.items():
+            with self.subTest(name=name):
+                self.assert_finding(self.validator.validate_texts(setup, start + "\n" + addition), code, path, message)
+        harmless = start + "\npython3 - <<'PY-NOTE'\nNOTE = 'os.kill(123, 15); API_KEY; pip install'\nPY-NOTE\n"
+        harmless += (
+            "\ncat <<'python-notes'\n"
+            "import os, subprocess\n"
+            "os.kill(123, 15)\n"
+            "value = os.environ['API_KEY']\n"
+            "subprocess.run(['pip', 'install', 'package'])\n"
+            "python-notes\n"
+            "\npython3 script.py <<'SCRIPT-INPUT'\n"
+            "import os\nos.kill(123, 15)\nSCRIPT-INPUT\n"
+        )
+        harmless_codes = {item.code for item in self.validator.validate_texts(setup, harmless)}
+        self.assertNotIn("LW010", harmless_codes)
+        self.assertNotIn("LW011", harmless_codes)
+        self.assertNotIn("LW015", harmless_codes)
+
+    def test_login_registration_and_creation_require_real_helper_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        fake_plugin = setup.replace(
+            "login = await tools.liveware_login()", "login = await helper.liveware_login()"
+        ).replace(
+            "result = await tools.register_app(name=CLAWCHAT_APP_NAME, app_id=app_id, url=public_url(app_id))",
+            "result = await helper.register_app(name=CLAWCHAT_APP_NAME, app_id=app_id, url=public_url(app_id))",
+        )
+        with self.subTest(case="plugin"):
+            self.assert_finding(
+                self.validator.validate_texts(fake_plugin, start),
+                "LW009",
+                "liveware/scripts/setup.py",
+                "Setup is missing ClawChat login or registration.",
+            )
+
+        real_creation = 'run_liveware(binary, "app", "create", SKILL_NAME, "--agent-type", "hermes")'
+        fake_creation = setup.replace(real_creation, f"helper.{real_creation}")
+        with self.subTest(case="creation"):
+            self.assert_finding(
+                self.validator.validate_texts(fake_creation, start),
+                "LW016",
+                "liveware/scripts/setup.py",
+                "App creation is missing the Hermes agent type.",
+            )
+
+        unrelated = setup + '\nhelper.run_liveware("app", "create", SKILL_NAME)\n'
+        with self.subTest(case="unrelated"):
+            self.assertNotIn("LW016", {item.code for item in self.validator.validate_texts(unrelated, start)})
+
+    def test_first_app_fallback_follows_app_list_data_not_variable_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        fallbacks = {
+            "entries": """
+def recover_entries(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    entries = json.loads(raw)
+    return entries[0]["id"] if entries else None
+""",
+            "applications": """
+def recover_applications(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    payload = json.loads(raw)
+    applications = payload.get("apps", [])
+    return applications[0]["id"] if applications else None
+""",
+            "unrelated-equality": """
+def recover_despite_unrelated_equality(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    entries = json.loads(raw)
+    for entry in entries:
+        if unrelated == SKILL_NAME:
+            pass
+        return entry["id"]
+    return None
+""",
+            "unrelated-equality-guard": """
+def recover_from_unrelated_guard(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    entries = json.loads(raw)
+    for entry in entries:
+        if unrelated == SKILL_NAME:
+            return entry["id"]
+    return None
+""",
+            "reassigned-alias": """
+def recover_from_reassigned_alias(binary):
+    raw = run_liveware(binary, "app", "list", "--json")
+    entries = json.loads(raw)
+    for entry in entries:
+        alias = entry
+        alias = unrelated
+        if alias["name"] == SKILL_NAME:
+            return entry["id"]
+    return None
+""",
+        }
+        for name, addition in fallbacks.items():
+            with self.subTest(name=name):
+                self.assert_finding(
+                    self.validator.validate_texts(setup + addition, start),
+                    "LW004",
+                    "liveware/scripts/setup.py",
+                    "App recovery can fall back to a non-matching app.",
+                )
+        unrelated = setup + (
+            "\ndata = [1, 2, 3]\nfirst_number = data[0]\n"
+            '\nrecords = [{"id": 1}]\nfirst_id = records[0]["id"]\n'
+            '\nresult = subprocess.run(["echo", "app", "list"], capture_output=True, text=True)\n'
+            'lines = result.stdout.splitlines()\nfirst_line = lines[0] if lines else None\n'
+        )
+        self.assertNotIn("LW004", {item.code for item in self.validator.validate_texts(unrelated, start)})
+
+    def test_sequential_shell_statements_preserve_setup_and_pid_dataflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        direct_setup = start + '\nSETUP_SCRIPT=liveware/scripts/setup.py; "$SETUP_SCRIPT"\n'
+        with self.subTest(case="direct-setup"):
+            self.assert_finding(
+                self.validator.validate_texts(setup, direct_setup),
+                "LW008",
+                "liveware/scripts/start.sh",
+                "Start invokes setup instead of requiring existing state.",
+            )
+
+        unsafe = start + '\nPID=$OTHER_PID; builtin kill "$PID"\n'
+        with self.subTest(case="builtin-unsafe"):
+            self.assert_finding(
+                self.validator.validate_texts(setup, unsafe),
+                "LW010",
+                "liveware/scripts/start.sh",
+                "Start can terminate a process it cannot prove it owns.",
+            )
+        safe = start + '\n"${SERVER_COMMAND[@]}" & OWNED_PID=$!; builtin kill "$OWNED_PID"\n'
+        with self.subTest(case="same-line-owned"):
+            self.assertNotIn("LW010", {item.code for item in self.validator.validate_texts(setup, safe)})
+
+        overwritten = start + '\nPID=$!; PID=$OTHER_PID; builtin kill "$PID"\n'
+        with self.subTest(case="same-line-overwritten"):
+            self.assertIn("LW010", {item.code for item in self.validator.validate_texts(setup, overwritten)})
+
+    def test_start_state_reads_and_direct_credentials_require_real_shell_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+        without_reads = start.replace("$STATE_FILE", "/tmp/not-state")
+        literal_only = without_reads + "\nprintf '%s\\n' '$STATE_FILE'\n"
+        with self.subTest(case="single-quoted-literal"):
+            self.assert_finding(
+                self.validator.validate_texts(setup, literal_only),
+                "LW003",
+                "liveware/scripts/start.sh",
+                "Start does not read the standard state file.",
+            )
+        actual_read = without_reads + '\ncat "$STATE_FILE" >/dev/null\n'
+        with self.subTest(case="actual-argument"):
+            self.assertNotIn("LW003", {item.code for item in self.validator.validate_texts(setup, actual_read)})
+
+        direct_credential = start + "\nprintenv API_KEY >/dev/null\n"
+        with self.subTest(case="printenv"):
+            self.assert_finding(
+                self.validator.validate_texts(setup, direct_credential),
+                "LW015",
+                "liveware/scripts",
+                "Scripts read a credential environment variable directly.",
+            )
 
 
 if __name__ == "__main__":
