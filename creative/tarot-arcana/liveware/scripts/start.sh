@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================
-# Tarot Liveware — 每日激活（服务器已存在时）
+# Tarot Liveware — 启动服务 + 绑定隧道
 # ============================================================
-# 用法: bash liveware/scripts/start.sh
-#
-# 功能:
-#   1. 启动本地 Python 服务器
-#   2. 绑定 liveware 隧道到本地端口
+# 职责: 启动服务器 → 绑定隧道（假设 setup 已完成）
+# 用法: bash start.sh <app-id> [port]
+#   参数: app-id 必填（首次由 setup.py 创建）
+#         port   可选，默认 5080
 # ============================================================
 set -euo pipefail
 
@@ -25,7 +24,7 @@ elif [ -f "$APP_ID_FILE" ]; then
 else
   echo "❌ 未提供 app ID，且找不到 $APP_ID_FILE"
   echo "   用法: bash liveware/scripts/start.sh <app-id>"
-  echo "   或先运行 setup.sh 完成首次安装"
+  echo "   或先运行 python3 liveware/scripts/setup.py 完成首次安装"
   exit 1
 fi
 PORT="${2:-5080}"
