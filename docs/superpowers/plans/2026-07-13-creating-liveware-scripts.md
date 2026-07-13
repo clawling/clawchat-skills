@@ -1051,6 +1051,8 @@ try:
         state = json.load(stream)
 except (OSError, json.JSONDecodeError):
     raise SystemExit("start: Liveware state is invalid.")
+if not isinstance(state, dict):
+    raise SystemExit("start: Liveware state is invalid.")
 app_id = state.get("app_id")
 url = state.get("public_url")
 url_re = re.compile(
@@ -1060,6 +1062,7 @@ url_re = re.compile(
 valid = (
     state.get("schema_version") == 1
     and state.get("skill_name") == skill_name
+    and state.get("app_name") == skill_name
     and isinstance(app_id, str)
     and app_re.fullmatch(app_id)
     and isinstance(url, str)

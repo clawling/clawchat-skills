@@ -97,12 +97,13 @@ class RenderSetupTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     self.module.render_setup(analysis)
 
-    def test_preview_prints_setup_without_writing_scripts(self) -> None:
+    def test_preview_prints_both_scripts_without_writing_them(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             target = root / "target"
             analysis_path = root / "analysis.json"
-            analysis_path.write_text(json.dumps(READY, ensure_ascii=False), encoding="utf-8")
+            analysis = {**READY, "target_root": str(target)}
+            analysis_path.write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
 
             result = subprocess.run(
                 [sys.executable, self.module.__file__, str(target), str(analysis_path)],
@@ -112,11 +113,17 @@ class RenderSetupTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout, self.module.render_setup(READY) + "\n")
+            self.assertEqual(
+                json.loads(result.stdout),
+                {
+                    "setup.py": self.module.render_setup(analysis),
+                    "start.sh": self.module.render_start(analysis),
+                },
+            )
             self.assertFalse((target / "liveware" / "scripts" / "setup.py").exists())
             self.assertFalse((target / "liveware" / "scripts" / "start.sh").exists())
 
-    def test_apply_atomically_replaces_fixed_setup_path_with_mode_0755(self) -> None:
+    def test_apply_atomically_replaces_both_fixed_script_paths_with_mode_0755(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             target = root / "target"
@@ -127,7 +134,8 @@ class RenderSetupTests(unittest.TestCase):
             setup.chmod(0o600)
             stale_inode = setup.stat().st_ino
             analysis_path = root / "analysis.json"
-            analysis_path.write_text(json.dumps(READY, ensure_ascii=False), encoding="utf-8")
+            analysis = {**READY, "target_root": str(target)}
+            analysis_path.write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
 
             result = subprocess.run(
                 [sys.executable, self.module.__file__, str(target), str(analysis_path), "--apply"],
@@ -138,11 +146,93 @@ class RenderSetupTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout, "")
-            self.assertEqual(setup.read_text(encoding="utf-8"), self.module.render_setup(READY))
+            start = scripts / "start.sh"
+            self.assertEqual(setup.read_text(encoding="utf-8"), self.module.render_setup(analysis))
+            self.assertEqual(start.read_text(encoding="utf-8"), self.module.render_start(analysis))
             self.assertEqual(stat.S_IMODE(setup.stat().st_mode), 0o755)
+            self.assertEqual(stat.S_IMODE(start.stat().st_mode), 0o755)
             self.assertNotEqual(setup.stat().st_ino, stale_inode)
-            self.assertEqual([path.name for path in scripts.iterdir()], ["setup.py"])
-            self.assertFalse((scripts / "start.sh").exists())
+            self.assertEqual(sorted(path.name for path in scripts.iterdir()), ["setup.py", "start.sh"])
+
+    def test_dynamic_start_preserves_command_and_waits_before_loopback_bind(self) -> None:
+        text = self.module.render_start(READY)
+        self.assertIn('PORT="${PORT:-5080}"', text)
+        self.assertIn("SERVER_COMMAND=(python3 server.py --port \"${PORT}\")", text)
+        self.assertIn("wait_for_http", text)
+        self.assertIn('tunnel bind "$APP_ID" "http://127.0.0.1:${PORT}"', text)
+        self.assertNotIn("npm install", text)
+        self.assertNotIn("pip install", text)
+        self.assertNotIn("kill ", text)
+
+    def test_static_start_uses_bind_static_and_never_starts_a_server(self) -> None:
+        analysis = dict(READY)
+        analysis["adapter"] = {
+            "kind": "static",
+            "workdir": "liveware/static",
+            "command": [],
+            "required_commands": [],
+            "default_port": None,
+            "readiness": None,
+            "log": {"owner": "target", "path": None},
+        }
+        analysis["static_dir"] = "liveware/static"
+        text = self.module.render_start(analysis)
+        self.assertIn('tunnel bind-static "$APP_ID" "$SKILL_ROOT/liveware/static"', text)
+        self.assertNotIn("SERVER_COMMAND=", text)
+
+    def test_repair_replaces_only_the_standard_binding_block(self) -> None:
+        existing = """#!/usr/bin/env bash
+# BEGIN TARGET SERVER ADAPTER
+echo custom-server-adapter
+# END TARGET SERVER ADAPTER
+# BEGIN LIVEWARE BINDING
+echo obsolete-binding
+# END LIVEWARE BINDING
+"""
+        text = self.module.render_start(READY, existing=existing)
+        self.assertIn("echo custom-server-adapter", text)
+        self.assertNotIn("obsolete-binding", text)
+        self.assertIn('tunnel bind "$APP_ID"', text)
+
+    def test_existing_launcher_is_invoked_without_replacing_its_lifecycle(self) -> None:
+        analysis = dict(READY)
+        analysis["adapter"] = {
+            "kind": "existing-launcher",
+            "workdir": ".",
+            "command": ["bash", "scripts/start-server.sh"],
+            "required_commands": ["bash"],
+            "default_port": 9000,
+            "readiness": {"kind": "http", "url": "http://127.0.0.1:{port}/healthz"},
+            "log": {"owner": "target", "path": None},
+        }
+        text = self.module.render_start(analysis)
+        self.assertIn("SERVER_COMMAND=(bash scripts/start-server.sh)", text)
+        self.assertIn('"${SERVER_COMMAND[@]}"', text)
+        self.assertNotIn("SERVER_LOG=", text)
+
+    def test_external_service_is_checked_but_never_started(self) -> None:
+        analysis = dict(READY)
+        analysis["adapter"] = {
+            "kind": "external",
+            "workdir": ".",
+            "command": [],
+            "required_commands": [],
+            "default_port": 9000,
+            "readiness": {"kind": "http", "url": "http://127.0.0.1:{port}/healthz"},
+            "log": {"owner": "target", "path": None},
+        }
+        text = self.module.render_start(analysis)
+        self.assertIn("Target service is externally managed", text)
+        self.assertNotIn("SERVER_COMMAND=", text)
+        self.assertIn("wait_for_http", text)
+
+    def test_rendered_start_passes_bash_syntax_without_execution(self) -> None:
+        import subprocess
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "start.sh"
+            path.write_text(self.module.render_start(READY), encoding="utf-8")
+            result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
