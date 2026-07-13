@@ -576,6 +576,7 @@ class RenderSetupTests(unittest.TestCase):
         text = self.module.render_setup(READY)
         self.assertIn('SKILL_NAME = "sample-skill"', text)
         self.assertIn('CLAWCHAT_APP_NAME = "示例应用"', text)
+        self.assertIn('"app_name": SKILL_NAME', text)
         self.assertIn('STATE_ROOT = Path.home() / ".clawling" / "apps"', text)
 
     def test_setup_uses_plugin_login_exact_recovery_and_atomic_state(self) -> None:
@@ -688,10 +689,12 @@ def load_state() -> dict[str, object] | None:
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise fail(f"State file is invalid: {STATE_FILE}") from exc
+    if not isinstance(state, dict):
+        raise fail(f"State file is invalid: {STATE_FILE}")
     required = {
         "schema_version": SCHEMA_VERSION,
         "skill_name": SKILL_NAME,
-        "app_name": CLAWCHAT_APP_NAME,
+        "app_name": SKILL_NAME,
     }
     if any(state.get(key) != value for key, value in required.items()):
         raise fail(f"State file does not belong to {SKILL_NAME}.")
@@ -707,7 +710,7 @@ def save_state(app_id: str, registered: bool) -> dict[str, object]:
     state = {
         "schema_version": SCHEMA_VERSION,
         "skill_name": SKILL_NAME,
-        "app_name": CLAWCHAT_APP_NAME,
+        "app_name": SKILL_NAME,
         "app_id": app_id,
         "public_url": public_url(app_id),
         "registered": registered,
@@ -830,7 +833,7 @@ def render_setup(analysis: dict[str, object]) -> str:
     template = (ASSET_ROOT / "setup.py.tmpl").read_text(encoding="utf-8")
     replacements = {
         "@@SKILL_NAME@@": json.dumps(analysis["skill_name"], ensure_ascii=False),
-        "@@DISPLAY_NAME@@": json.dumps(analysis["display_name"], ensure_ascii=False),
+        "@@DISPLAY_NAME@@": json.dumps(analysis.get("display_name") or analysis["skill_name"], ensure_ascii=False),
     }
     for marker, value in replacements.items():
         template = template.replace(marker, value)
@@ -1712,7 +1715,7 @@ Treat Python and Node detection as evidence-based conveniences. Treat Docker, s6
 
 ## State
 
-Use `$HOME/.clawling/apps/<skill-name>.json` with schema version `1` and fields `skill_name`, `app_name`, `app_id`, `public_url`, and `registered`. Set `.clawling` and `apps` directories to mode `0700`, the state file to mode `0600`, and replace the file atomically. Never store credentials.
+Use `$HOME/.clawling/apps/<skill-name>.json` with schema version `1` and fields `skill_name`, `app_name`, `app_id`, `public_url`, and `registered`. Store the stable skill `name` in both `skill_name` and `app_name`; never use `display_name` as state identity. Set `.clawling` and `apps` directories to mode `0700`, the state file to mode `0600`, and replace the file atomically. Never store credentials.
 
 ## Setup Contract
 

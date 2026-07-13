@@ -141,6 +141,7 @@ Skill 不要求 server 具有特定形态。分析器只描述如何使用用户
 - `liveware app create` 使用稳定的 skill `name`。
 - `register_app` 使用 `display_name`；缺失时使用 `name`。
 - 状态文件名使用 skill `name`。
+- 状态中的 `app_name` 使用稳定的 skill `name`；`display_name` 不参与状态身份。
 
 每个 Hermes agent 可以拥有多个 Liveware 应用。应用状态固定写入：
 
@@ -154,7 +155,7 @@ $HOME/.clawling/apps/<skill-name>.json
 {
   "schema_version": 1,
   "skill_name": "tarot-arcana",
-  "app_name": "Tarot Arcana",
+  "app_name": "tarot-arcana",
   "app_id": "app-xxx",
   "public_url": "https://app-xxx.apps.clawling.io",
   "registered": true

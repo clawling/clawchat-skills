@@ -23,7 +23,7 @@ def render_setup(analysis: dict[str, object]) -> str:
     template = (ASSET_ROOT / "setup.py.tmpl").read_text(encoding="utf-8")
     replacements = {
         "@@SKILL_NAME@@": json.dumps(analysis["skill_name"], ensure_ascii=False),
-        "@@DISPLAY_NAME@@": json.dumps(analysis["display_name"], ensure_ascii=False),
+        "@@DISPLAY_NAME@@": json.dumps(analysis.get("display_name") or analysis["skill_name"], ensure_ascii=False),
     }
     for marker, value in replacements.items():
         template = template.replace(marker, value)

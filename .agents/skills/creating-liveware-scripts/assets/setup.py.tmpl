@@ -74,10 +74,12 @@ def load_state() -> dict[str, object] | None:
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise fail(f"State file is invalid: {STATE_FILE}") from exc
+    if not isinstance(state, dict):
+        raise fail(f"State file is invalid: {STATE_FILE}")
     required = {
         "schema_version": SCHEMA_VERSION,
         "skill_name": SKILL_NAME,
-        "app_name": CLAWCHAT_APP_NAME,
+        "app_name": SKILL_NAME,
     }
     if any(state.get(key) != value for key, value in required.items()):
         raise fail(f"State file does not belong to {SKILL_NAME}.")
@@ -93,7 +95,7 @@ def save_state(app_id: str, registered: bool) -> dict[str, object]:
     state = {
         "schema_version": SCHEMA_VERSION,
         "skill_name": SKILL_NAME,
-        "app_name": CLAWCHAT_APP_NAME,
+        "app_name": SKILL_NAME,
         "app_id": app_id,
         "public_url": public_url(app_id),
         "registered": registered,
