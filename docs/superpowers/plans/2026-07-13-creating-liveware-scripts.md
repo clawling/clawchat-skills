@@ -581,8 +581,8 @@ class RenderSetupTests(unittest.TestCase):
     def test_setup_uses_plugin_login_exact_recovery_and_atomic_state(self) -> None:
         text = self.module.render_setup(READY)
         self.assertIn("await tools.liveware_login()", text)
-        self.assertIn('run_liveware("app", "inspect", app_id)', text)
-        self.assertIn('run_liveware("app", "list", "--json")', text)
+        self.assertIn('run_liveware(binary, "app", "inspect", app_id)', text)
+        self.assertIn('run_liveware(binary, "app", "list", "--json")', text)
         self.assertIn('"--agent-type", "hermes"', text)
         self.assertIn("os.replace(temp_name, STATE_FILE)", text)
         self.assertNotIn("shell=True", text)
