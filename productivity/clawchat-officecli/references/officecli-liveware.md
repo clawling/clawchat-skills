@@ -10,7 +10,6 @@ Liveware. Use the bundled scripts from `${HERMES_SKILL_DIR}/scripts`.
   store, creates or reuses a liveware app, and **registers the app to ClawChat**
   using plugin tools.
   Stores app id in `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/liveware.env`.
-  Must be run within the Hermes gateway process (handler.py calls it via subprocess).
 - `office-liveware-start.sh`: starts the local Office preview directory service
   on the given port, binds the app to the local service through `liveware tunnel
   bind`, and prints the public URL. Does NOT handle setup or registration —
@@ -91,9 +90,7 @@ Useful environment variables:
 - `OFFICE_DIRECTORY_PORT`: local directory service port.
 - `OFFICE_DIRECTORY_SCRIPT`: alternate path to `office-live-directory.py`.
 - `OFFICE_LIVEWARE_SETUP_SCRIPT`: alternate path to `office-liveware-setup.py`.
-  Not used by `start.sh` — `start.sh` does not call setup. The boot hook
-  (`handler.py`) reads this variable to find the setup script when APP_ID is
-  missing from the state file.
+  Not used by `start.sh` — `start.sh` does not call setup.
 - `OFFICE_DIRECTORY_LOG`: directory service log path.
 - `LIVEWARE_BIN`: Liveware binary name or path, default `liveware`.
 - `LIVEWARE_DOMAIN`: Liveware public URL domain suffix, default `apps.clawling.io`.
@@ -160,43 +157,22 @@ DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$OFFICE_BIN" get "$DOC" selected --json
 
 ## ClawChat Messages
 
-The directory server runs outside the Hermes agent tool context. It cannot call
-the `send_message` tool, and `hermes send` is not a reliable ClawChat delivery
-path from this process.
+When the browser prepares a file message for ClawChat, deliver it from the Hermes
+agent with the `send_message` tool. The prepared message must include
+`MEDIA:<absolute-file-path>` for the Office file so ClawChat receives a native
+attachment, not only a preview link.
 
-When the browser prepares a file message, send it from the Hermes agent with the
-`send_message` tool. The prompt should instruct the agent to call
-`send_message` with target exactly `clawchat` and the prepared message content.
-For file delivery, the prepared message must include `MEDIA:<absolute-file-path>`
-for the Office file so ClawChat receives a native attachment, not only a preview
-link.
-The Office Liveware directory must not hard-code a ClawChat chat ID in source
-code. Do not ask the directory server, Liveware, OfficeCLI watch, or
-`hermes send` to deliver the message.
+Rules:
 
-The browser `Send` action submits a prompt to the running Hermes API server
-with REST (`POST /v1/runs` on the local `api_server` platform). That Hermes
-run must use the `send_message` tool to deliver the prepared text to ClawChat.
-The `api_server` platform must include the `messaging` toolset; the setup script
-configures this when it can write the Hermes config.
-The directory server returns after receiving a `run_id`, then records status
-events in:
+- Do not hard-code a ClawChat chat ID in source code.
+- Do not use `hermes send` or the directory server to deliver the message.
+- Do not call the directory server or Liveware to send ClawChat messages.
 
-```bash
-${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/share-requests.jsonl
-```
-
-Inspect recent requests with:
+Recent share requests can be inspected with:
 
 ```bash
 curl -fsS http://127.0.0.1:26316/api/share-requests?limit=20
 ```
-
-`submitted_to_hermes` means the browser request was accepted.
-`submitted_to_hermes_rest` means the directory server submitted the prompt to
-Hermes through the local REST API and received a `run_id`. Later records such
-as `hermes_rest_completed`, `hermes_rest_failed`, or
-`hermes_rest_poll_timeout` describe the background run result.
 
 ## Troubleshooting
 
@@ -206,8 +182,7 @@ as `hermes_rest_completed`, `hermes_rest_failed`, or
 - If preview selection is not recorded, confirm the browser request to `/preview/<doc-id>/_watch/api/selection` returns `204`, then read the selected node with OfficeCLI.
 - If Hermes asks for command approval after `curl-to-python piping`, do not approve that command. Use direct `curl`, `grep`, or OfficeCLI instead.
 - If duplicate Liveware apps appear (same name, different IDs), the `existing_app_id()` name matching in `office-liveware-setup.py` may have failed. Run `liveware app list`, identify duplicates, delete extras with `liveware app delete <id>`. The correct app ID is stored in `.state/liveware.env`.
-- If the boot hook fails to capture the public URL after changing `LIVEWARE_DOMAIN`, the regex in `handler.py` must be updated — it currently hardcodes `apps.clawling.io` in the URL pattern.
-- If registration fails with `invalid token`, the script is likely using `$CLAWCHAT_TOKEN` or curl instead of plugin tools. Only `setup.py` (Python, running inside the gateway process) can register via `clawchat_register_app()`. Shell scripts and curl will always fail.
+- If registration fails with `invalid token`, the script is likely using `$CLAWCHAT_TOKEN` or curl instead of plugin tools. Only `setup.py` can register via `clawchat_register_app()`. Shell scripts and curl will always fail.
 
 ## Verification
 

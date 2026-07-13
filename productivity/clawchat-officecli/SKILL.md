@@ -11,20 +11,6 @@ the most specific official OfficeCLI skill first, then use the OfficeCLI CLI or
 MCP exactly as that official skill instructs. Liveware is only the browser
 preview and file-directory layer.
 
-## Directory Structure
-
-```
-clawchat-officecli/
-  SKILL.md                        ← this file
-  references/officecli-liveware.md ← liveware reference
-  scripts/
-    office-live-directory.py      ← directory server
-    office-liveware-setup.py      ← one-time setup (login, create app, register)
-    office-liveware-start.sh      ← per-boot start (directory + tunnel)
-  web/
-    index.html                    ← browser preview frontend
-    assets/                       ← JS/CSS
-```
 ## Primary Rule
 
 When the user asks to create, read, inspect, edit, format, summarize, validate,
@@ -74,7 +60,7 @@ Selection workflow:
 
 3. Modify the selected node with the official OfficeCLI skill's recommended
    `set`, `add`, `remove`, or `batch` command.
-4. Do not call `/api/selection`; it is an internal watch-page write channel.
+4. Do not call `/api/selection`.
 
 ## Scope
 
@@ -164,10 +150,8 @@ Rules:
 1. Use this skill only for workspace location, preview-directory startup, and file listing.
 2. Use the selected official skill for creation, editing, reading, formatting, schema paths, save behavior, and validation.
 3. Treat official OfficeCLI skills as the source of truth for document operations.
-4. The browser directory may create blank files through the OfficeCLI CLI so a preview can open; chat-driven document content work still belongs to the official skills.
-5. The browser directory can submit a prompt to a Hermes gateway agent, and that agent must send ClawChat messages with the `send_message` tool.
-6. Do not use `hermes send` for ClawChat delivery from Liveware or directory-server processes.
-7. If no official skill appears to fit, inspect the installed official OfficeCLI skills before inventing a document workflow.
+4. Do not use `hermes send` for ClawChat delivery from Liveware or directory-server processes.
+5. If no official skill appears to fit, inspect the installed official OfficeCLI skills before inventing a document workflow.
 
 ## Liveware Reference
 
@@ -193,18 +177,6 @@ find "$DOC_ROOT" -maxdepth 1 -type f \( -name '*.docx' -o -name '*.pptx' -o -nam
 
 Search the managed document root before considering user-provided additional roots.
 
-## Selection Guardrails
-
-- Browser selection is an OfficeCLI watch feature.
-- After the user selects content in the preview, read it with
-  `officecli get <file> selected --json`.
-- Do not call `/api/selection` from the agent to read selection state.
-- Do not call `/api/selection` to modify documents.
-- `/api/selection` is an internal watch-page write channel used by the browser
-  preview to synchronize selection into the watch process.
-- If `get selected` returns no matches, ask the user to click/select content in
-  the preview and then retry the official CLI command.
-
 ## Agent Workflow
 
 1. Select the most specific official OfficeCLI skill for the requested document work.
@@ -214,58 +186,4 @@ Search the managed document root before considering user-provided additional roo
 5. Read `references/officecli-liveware.md` only when Liveware account, app, tunnel, preview startup, or preview-directory troubleshooting is needed.
 6. Keep files in the managed document root unless the user explicitly provides another clean workspace.
 
-## Troubleshooting
 
-- If OfficeCLI exits with an ICU error, rerun with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`.
-- If the preview directory or Liveware tunnel has issues, read `references/officecli-liveware.md`.
-- If a skill installation from a tap is blocked by the security scanner, read `references/security-scanner-patterns.md` for common false positive patterns and fixes.
-
-## Script Shareability
-
-The bundled scripts under `scripts/` are designed to be shared — no hardcoded
-app IDs, user IDs, domains, or absolute paths. All configuration is through
-environment variables with sensible defaults:
-
-| Env var | Default | Purpose |
-| --- | --- | --- |
-| `HERMES_HOME` | `~/.hermes` | Hermes home directory (optional fallback) |
-| `LIVEWARE_DOMAIN` | `apps.clawling.io` | Liveware public URL domain |
-| `OFFICE_LIVE_HOME` | `$HERMES_HOME/workspace/office-live` | Workflow home |
-| `LIVEWARE_BIN` | `liveware` | Liveware CLI binary |
-| `OFFICE_BIN` | auto-detected | OfficeCLI binary |
-
-The Liveware app name is **hardcoded** as `OfficeCLI-Live` in
-`scripts/office-liveware-setup.py` — not configurable. This keeps the script
-clean for sharing.
-
-When extending these scripts:
-- Never hardcode an app ID, user ID, or absolute path.
-- New configuration should follow the env-var-with-default pattern.
-- State files (`liveware.env`, `directory.pid`) go under `.state/` at runtime,
-  not in the script source.
-
-### ClawChat registration
-
-Registration must use the **Hermes plugin's internal credential store**, which
-is only accessible from Python code running inside the gateway process. The
-`$CLAWCHAT_TOKEN` env var is NOT the ClawChat API token.
-
-The bundled `scripts/office-liveware-setup.py` handles this correctly:
-
-```python
-from clawchat_gateway.tools import register_app
-# await register_app(name="OfficeCLI-Live", app_id="...", url="...")
-```
-
-Or via the Hermes tool call in a conversation:
-```
-clawchat_register_app(name="OfficeCLI-Live", appId="...", url="...")
-```
-
-### Pitfall: stale demo-doc app
-
-Older versions created an app named `demo-doc`. If you see this in `liveware
-app list`, it's a leftover from before the naming convention was set to
-`OfficeCLI-Live`. Delete it with `liveware app delete <id>` and unregister
-from ClawChat with `clawchat_unregister_app(appId="<id>")` if it was
-registered.
