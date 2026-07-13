@@ -912,6 +912,18 @@ git commit -m "feat: render idempotent liveware setup"
 - Produces: `render_start(analysis: dict[str, object], existing: str | None = None) -> str`
 - Marker contract: `# BEGIN TARGET SERVER ADAPTER`, `# END TARGET SERVER ADAPTER`, `# BEGIN LIVEWARE BINDING`, and `# END LIVEWARE BINDING`
 
+**Human-approved hardening amendment (overrides conflicting snippets below):**
+
+- Require `target_root` to be a non-empty string that resolves to the requested target.
+- Reject a symlinked `liveware` or `liveware/scripts` parent and any read or write path that escapes the resolved target root.
+- Parse the four exact whole-line markers structurally. Require each marker exactly once, in adapter-begin, adapter-end, binding-begin, binding-end order, with no nesting.
+- Regenerate the approved adapter from current analysis. Preserve an existing adapter only when its block is byte-for-byte identical to that generated adapter; otherwise stop with `ValueError`.
+- Repair by splicing only the Liveware binding block into the existing text. Preserve every byte outside that block.
+- Treat analysis values as shell data. Validate target-relative paths and loopback readiness structure, reject control characters, and use shell-safe literal encoding. Preserve only the explicit `${PORT}` and `${HOME}` expansions required by the contract.
+- Replace `assert`-based public input checks with deterministic `ValueError` validation.
+- Add RED-first regression tests for symlink containment, missing/non-string `target_root`, malformed/duplicate/reordered/nested markers, outside-block preservation, stale adapter rejection, adversarial shell values, readiness-before-bind ordering, and `bash -n` for all four adapter kinds.
+- Static tests may render and parse scripts but must not execute generated setup/start scripts or simulate a Liveware runtime.
+
 - [ ] **Step 1: Add failing dynamic, static, and repair tests**
 
 Add these methods to `RenderSetupTests` before its final `if __name__` block:
@@ -944,18 +956,27 @@ Add these methods to `RenderSetupTests` before its final `if __name__` block:
         self.assertNotIn("SERVER_COMMAND=", text)
 
     def test_repair_replaces_only_the_standard_binding_block(self) -> None:
-        existing = """#!/usr/bin/env bash
-# BEGIN TARGET SERVER ADAPTER
-echo custom-server-adapter
-# END TARGET SERVER ADAPTER
-# BEGIN LIVEWARE BINDING
-echo obsolete-binding
-# END LIVEWARE BINDING
-"""
+        existing = self.module.render_start(READY)
+        existing = existing.replace(
+            self.module.BEGIN_BINDING,
+            "echo preserve-before-binding\n" + self.module.BEGIN_BINDING,
+        )
+        existing = existing.replace(
+            '"$LIVEWARE_BIN" tunnel bind "$APP_ID" "http://127.0.0.1:${PORT}"',
+            "echo obsolete-binding",
+        )
         text = self.module.render_start(READY, existing=existing)
-        self.assertIn("echo custom-server-adapter", text)
+        self.assertIn("echo preserve-before-binding", text)
         self.assertNotIn("obsolete-binding", text)
         self.assertIn('tunnel bind "$APP_ID"', text)
+
+    def test_repair_rejects_an_adapter_that_differs_from_current_analysis(self) -> None:
+        existing = self.module.render_start(READY).replace(
+            "SERVER_COMMAND=(python3 server.py --port \"${PORT}\")",
+            "SERVER_COMMAND=(node stale-server.js)",
+        )
+        with self.assertRaisesRegex(ValueError, "does not match current analysis"):
+            self.module.render_start(READY, existing=existing)
 
     def test_existing_launcher_is_invoked_without_replacing_its_lifecycle(self) -> None:
         analysis = dict(READY)
