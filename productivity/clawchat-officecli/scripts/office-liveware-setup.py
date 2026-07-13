@@ -2,8 +2,7 @@
 """First-time install/activation of Liveware for Office preview directory.
 
 Idempotent setup: login → create app → register to ClawChat.
-Uses the ClawChat plugin's internal credential (not env vars) for login and registration.
-"""
+Uses the ClawChat plugin's internal credential (not env vars) for login and registration."""
 
 import asyncio
 import json
@@ -139,36 +138,6 @@ def create_app() -> str:
 
 # ── async setup (uses plugin tools) ────────────────────────────────────
 
-def _parse_soul_profile() -> tuple[str, str]:
-    """Read SOUL.md and extract name and avatar URL.
-
-    Name is extracted from the `# Persona — <name>` heading.
-    Avatar URL is extracted from any line matching `Avatar: <url>`.
-
-    Returns (name, avatar_url) — either may be empty.
-    """
-    soul_file = HERMES_HOME / "SOUL.md"
-    if not soul_file.exists():
-        return ("", "")
-    text = soul_file.read_text(encoding="utf-8").strip()
-    import re
-
-    name = ""
-    avatar_url = ""
-
-    # Name: from "# Persona — Name" heading
-    m = re.search(r"^#\s+Persona\s*[—–-]\s*(.+)", text, re.MULTILINE)
-    if m:
-        name = m.group(1).strip()
-
-    # Avatar: from "Avatar: <url>" line
-    m = re.search(r"^Avatar:\s*(https?://\S+)", text, re.MULTILINE)
-    if m:
-        avatar_url = m.group(1).strip()
-
-    return (name, avatar_url)
-
-
 async def setup() -> int:
     global APP_ID
     ensure_dirs()
@@ -213,24 +182,6 @@ async def setup() -> int:
         info(f"ClawChat registration failed ({err}): {msg}")
         return 1
     info(f"Registered app \"{APP_NAME}\" ({APP_ID}) to ClawChat: {url}")
-
-    # ── 4. Sync SOUL.md (name/avatar) to ClawChat profile ──
-    soul_name, soul_avatar = _parse_soul_profile()
-    if soul_name or soul_avatar:
-        from clawchat_gateway.tools import update_account_profile
-
-        kwargs: dict[str, str] = {}
-        if soul_name:
-            kwargs["nickname"] = soul_name
-        if soul_avatar:
-            kwargs["avatar_url"] = soul_avatar
-        profile_result = await update_account_profile(**kwargs)
-        if isinstance(profile_result, dict) and profile_result.get("error"):
-            info(f"SOUL.md → ClawChat profile sync error: {profile_result['error']}")
-        else:
-            info(f"SOUL.md → ClawChat profile synced: nickname={soul_name or '(unchanged)'}")
-    else:
-        info("SOUL.md: no name or avatar to sync")
 
     return 0
 

@@ -22,7 +22,7 @@ clawchat-officecli/
   references/officecli-liveware.md ← liveware architecture docs
   scripts/
     office-live-directory.py      ← directory server
-    office-liveware-setup.py      ← one-time setup (login, create app, register, sync SOUL)
+    office-liveware-setup.py      ← one-time setup (login, create app, register)
     office-liveware-start.sh      ← per-boot start (directory + tunnel)
   web/
     index.html                    ← browser preview frontend
@@ -230,6 +230,7 @@ Search the managed document root before considering user-provided additional roo
 
 - If OfficeCLI exits with an ICU error, rerun with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1`.
 - If the preview directory or Liveware tunnel has issues, read `references/officecli-liveware.md`.
+- If a skill installation from a tap is blocked by the security scanner, read `references/security-scanner-patterns.md` for common false positive patterns and fixes.
 
 ## Script Shareability
 
@@ -272,147 +273,6 @@ Or via the Hermes tool call in a conversation:
 ```
 clawchat_register_app(name="OfficeCLI-Live", appId="...", url="...")
 ```
-
-### Integration: boot-md hook
-
-The `boot-md` hook at `hooks/boot-md/handler.py` drives the full startup flow:
-
-```
-handler.py (_run_boot_policy)
-  ├─ _ensure_liveware_sample_disabled()
-  ├─ _ensure_officecli_ready()
-  ├─ _prepare_liveware()
-  │    ├─ check APP_ID in state file
-  │    ├─ if missing → python3 setup.py   ← steps 1-4: login, create app, register, sync SOUL
-  │    └─ start.sh <port>                 ← steps 5-6: start directory, tunnel bind
-  ├─ _draft_message_sync()
-  ├─ _finalize_message_sync()
-  └─ _send_to_clawchat()
-```
-
-The boot hook reads the APP_ID from the liveware state file. If missing, it
-runs `setup.py` (login → create app → register to ClawChat). Then it always
-runs `start.sh` to start the directory service and bind the tunnel.
-
-The ClawChat registration via plugin tools happens inside `setup.py`, not in
-the boot hook or `start.sh`.
-
-The boot hook also has a regex to extract the public URL from script output:
-
-```python
-PUBLIC_URL_RE = re.compile(r"https://[A-Za-z0-9_.-]+\\\\.apps\\\\.clawling\\\\.io")
-```
-
-If `LIVEWARE_DOMAIN` is changed to a non-`apps.clawling.io` value, this regex
-must be updated in sync — otherwise the URL won't be captured.
-
-### Architecture: 6-step workflow model
-
-The liveware service follows a clean 6-step model split across two scripts:
-
-```
-setup.py (one-time):       start.sh (every boot):
-  1. login                   5. start directory server
-  2. create app              6. tunnel bind
-  3. register to ClawChat
-  4. sync SOUL.md → profile
-```
-
-**Setup.py does 4 things, not 3.** In addition to login, create app, and register,
-it also reads `SOUL.md` (the agent's identity file) and syncs the `name` and
-`avatar` to the ClawChat account profile via `clawchat_gateway.tools.update_account_profile`.
-This happens only once during setup — subsequent boots skip it entirely and just
-greet.
-
-The SOUL.md parsing follows the Hermes docs convention (headings, "You are" style):
-
-```
-# Persona — Caden
-
-Your name is Caden.       → extracts "Caden" as nickname
-Avatar: https://...       → extracts URL as avatar_url
-```
-
-SOUL.md is a third-person description of the agent, not first-person. It uses
-`# Persona — <name>` as the heading, `Your name is` for the name line, and
-`You are` / `You don't` / `You value` throughout — never "I" statements.
-
-If SOUL.md is missing or has no name/avatar, the sync is silently skipped.
-
-**Registration doesn't need tunnel bind.** The ClawChat
-registration URL is deterministic from the app ID alone:
-
-```
-https://{app_id}.{LIVEWARE_DOMAIN}
-# e.g. https://app-8096cb458a8459da.apps.clawling.io
-```
-
-So step 3 can happen immediately after step 2, before the directory server or
-tunnel exist. The two halves are independent:
-
-| Step | Requires | Handled by |
-|------|----------|-----------|
-| 1. login | Plugin credential store | `setup.py` |
-| 2. create app | liveware CLI | `setup.py` |
-| 3. register | Plugin credential store | `setup.py` |
-| 4. start server | Python + network port | `start.sh` |
-| 5. tunnel bind | Running directory server | `start.sh` |
-
-**start.sh is intentionally shell, not Python.** It only does process
-management (`nohup`, PID files), `curl` health checks, and liveware CLI calls
-— all shell-friendly. No ClawChat plugin tools are needed, so no Python
-conversion is required.
-
-### Architecture: registration in setup.py (not shell, not handler.py)
-
-ClawChat app registration (`POST /v1/agents/me/apps`) must use the **Hermes
-plugin's internal credential store**, which is only accessible from Python code
-running inside the gateway process. A shell script cannot do this correctly
-because `$CLAWCHAT_TOKEN` is not the ClawChat API token.
-
-The correct architecture separates concerns:
-
-```
-handler.py (gateway:startup)
-  ├─ check APP_ID in state file
-  ├─ if missing → python3 setup.py   ← steps 1-4: login, create app, register, sync SOUL
-  ├─ start.sh <port>                 ← steps 5-6: start directory, bind tunnel
-  └─ send startup message
-```
-
-`setup.py` (Python, not shell) has access to plugin tools:
-
-```python
-# scripts/office-liveware-setup.py
-import sys
-sys.path.insert(0, str(Path.home() / ".hermes" / "plugins" / "clawchat"))
-
-from clawchat_gateway.tools import liveware_login, register_app
-import asyncio
-
-async def setup():
-    await liveware_login()                       # login via plugin credential store
-    app_id = create_or_reuse_app()               # liveware CLI
-    await register_app(                          # register via plugin credential store
-        name="OfficeCLI-Live",
-        appId=app_id,
-        url=f"https://{app_id}.{domain}"
-    )
-    await sync_soul_profile()                    # read SOUL.md, update ClawChat name/avatar
-
-asyncio.run(setup())
-```
-
-The Python script dynamically resolves the clawchat plugin directory by
-traversing up from the script's own location to find `plugins/clawchat` under
-`HERMES_HOME` (fallback `~/.hermes`). This makes the script portable and
-shareable — no hardcoded paths.
-
-**Why not handler.py?** Registration is a one-time setup action (app creation),
-not a per-boot action. Putting it in setup.py keeps the boot hook focused on
-startup orchestration and makes the setup/start separation clear. The
-ClawChat registration API is idempotent, so running it from setup.py on
-first install is sufficient.
 
 ### Pitfall: stale demo-doc app
 

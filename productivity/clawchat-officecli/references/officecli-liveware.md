@@ -7,8 +7,8 @@ Liveware. Use the bundled scripts from `${HERMES_SKILL_DIR}/scripts`.
 
 - `office-liveware-setup.py` (primary): Python script that handles first-time
   setup — logs in to liveware via the ClawChat plugin's internal credential
-  store, creates or reuses a liveware app, **registers the app to ClawChat**
-  using plugin tools, and syncs SOUL.md name/avatar to the ClawChat profile.
+  store, creates or reuses a liveware app, and **registers the app to ClawChat**
+  using plugin tools.
   Stores app id in `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/liveware.env`.
   Must be run within the Hermes gateway process (handler.py calls it via subprocess).
 - `office-liveware-start.sh`: starts the local Office preview directory service
@@ -21,8 +21,8 @@ Liveware. Use the bundled scripts from `${HERMES_SKILL_DIR}/scripts`.
 ## Setup
 
 Run setup before the first preview session, or when authentication or app creation is
-not prepared yet. The Python setup script handles login, app creation, ClawChat registration,
-and SOUL.md → ClawChat profile sync in one step using plugin tools:
+not prepared yet. The Python setup script handles login, app creation, and ClawChat registration
+using plugin tools:
 
 ```bash
 ${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
