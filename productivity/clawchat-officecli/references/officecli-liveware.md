@@ -3,32 +3,24 @@
 Use this reference when a user needs the OfficeCLI preview directory exposed through
 Liveware. Use the bundled scripts from `${HERMES_SKILL_DIR}/scripts`.
 
-## Script Responsibilities
+## Scripts
 
-- `office-liveware-setup.py` (primary): Python script that handles first-time
-  setup — logs in to liveware via the ClawChat plugin's internal credential
-  store, creates or reuses a liveware app, and **registers the app to ClawChat**
-  using plugin tools.
-  Stores app id in `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/liveware.env`.
-- `office-liveware-start.sh`: starts the local Office preview directory service
-  on the given port, binds the app to the local service through `liveware tunnel
-  bind`, and prints the public URL. Does NOT handle setup or registration —
-  those are the responsibility of `setup.py`.
-- `office-live-directory.py`: serves the Office file directory and proxies each
-  file preview to an OfficeCLI watch server.
+| Script | When to use |
+| --- | --- |
+| `office-liveware-setup.py` | First-time setup — run before `start.sh` |
+| `office-liveware-start.sh` | Start the browser preview directory |
+| `office-live-directory.py` | Started by `start.sh`; not run directly |
 
 ## Setup
 
 Run setup before the first preview session, or when authentication or app creation is
-not prepared yet. The Python setup script handles login, app creation, and ClawChat registration
-using plugin tools:
+not prepared yet:
 
 ```bash
 ${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
 ```
 
-The start script does NOT call setup automatically — if the app id is missing,
-start.sh will error out. Run setup first, then start:
+The start script does NOT call setup automatically — run setup first, then start:
 
 ```bash
 ${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
@@ -39,8 +31,7 @@ Useful environment variables:
 
 - `OFFICE_LIVE_HOME`: workflow home, default `${HERMES_HOME:-$HOME/.hermes}/workspace/office-live`.
 - `OFFICE_APP_ID`: reuse a known Liveware app id.
-- `OFFICE_APP_NAME`: **Deprecated** — app name is now hardcoded as `OfficeCLI-Live` in `setup.py`.
-  Setting this variable has no effect.
+- `OFFICE_APP_NAME`: has no effect. App name is hardcoded as `OfficeCLI-Live`.
 - `LIVEWARE_TOKEN`: an already exchanged Liveware control-plane token. The Liveware CLI
   consumes it directly; do not pass it to `liveware login --access-token`.
 - `OFFICE_LIVEWARE_INSTALL_CMD`: explicit command to install Liveware when it is missing.
@@ -48,12 +39,6 @@ Useful environment variables:
 - `LIVEWARE_BIN`: Liveware binary name or path, default `liveware`.
 - `LIVEWARE_DOMAIN`: Liveware public URL domain suffix, default `apps.clawling.io`.
 - `HERMES_HOME`: Hermes home directory, optional — falls back to `$HOME/.hermes` when unset.
-
-**Note on ClawChat authentication**: The Python setup script (`setup.py`) uses the
-ClawChat plugin's internal credential store for login and registration. It does
-**not** use `$CLAWCHAT_TOKEN` or `$CLAWCHAT_ACCESS_TOKEN` — those env vars are not
-the correct credentials for the ClawChat REST API. The plugin handles authentication
-internally via `clawchat_liveware_login()` and `clawchat_register_app()`.
 
 ## Start
 
@@ -63,14 +48,6 @@ the user to perform setup before trying this script.
 ```bash
 ${HERMES_SKILL_DIR}/scripts/office-liveware-start.sh 26316
 ```
-
-The start script:
-
-1. Creates `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/documents` when needed.
-2. Starts the directory service on the requested local port.
-3. Reads the app id from the state file (`liveware.env`); errors out if missing.
-4. Binds the Liveware app to `http://127.0.0.1:<port>`.
-5. Prints the public directory URL.
 
 If start fails, run setup once and then run start again:
 
@@ -95,8 +72,6 @@ Useful environment variables:
 - `LIVEWARE_BIN`: Liveware binary name or path, default `liveware`.
 - `LIVEWARE_DOMAIN`: Liveware public URL domain suffix, default `apps.clawling.io`.
 - `HERMES_HOME`: Hermes home directory, optional — falls back to `$HOME/.hermes` when unset.
-
-App name is `OfficeCLI-Live` (hardcoded in `setup.py`, not configurable).
 
 ## Expected State
 
@@ -181,16 +156,15 @@ curl -fsS http://127.0.0.1:26316/api/share-requests?limit=20
 - If a document is missing from the directory, place it under one of `OFFICE_DOC_ROOTS` or start the launcher with `OFFICE_DOC_ROOTS=/path/a:/path/b`.
 - If preview selection is not recorded, confirm the browser request to `/preview/<doc-id>/_watch/api/selection` returns `204`, then read the selected node with OfficeCLI.
 - If Hermes asks for command approval after `curl-to-python piping`, do not approve that command. Use direct `curl`, `grep`, or OfficeCLI instead.
-- If duplicate Liveware apps appear (same name, different IDs), the `existing_app_id()` name matching in `office-liveware-setup.py` may have failed. Run `liveware app list`, identify duplicates, delete extras with `liveware app delete <id>`. The correct app ID is stored in `.state/liveware.env`.
-- If registration fails with `invalid token`, the script is likely using `$CLAWCHAT_TOKEN` or curl instead of plugin tools. Only `setup.py` can register via `clawchat_register_app()`. Shell scripts and curl will always fail.
+- If duplicate Liveware apps appear (same name, different IDs), check `liveware app list`, delete extras with `liveware app delete <id>`. The correct app ID is stored in `.state/liveware.env`.
+- If registration fails with `invalid token`, do not use `$CLAWCHAT_TOKEN` or curl. Only `setup.py` can register.
 
 ## Verification
 
 - `curl -fsS http://127.0.0.1:26316/healthz` returns `ok`.
 - `curl -fsS http://127.0.0.1:26316/api/files` returns preview-directory JSON.
 - Opening `/preview/<doc-id>/` returns the wrapper page.
-- Opening `/preview/<doc-id>/_watch/` returns the OfficeCLI watch page and records a watch in `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/state.json`.
-- Browser selection posts to `/preview/<doc-id>/_watch/api/selection` with status `204`.
+- Opening `/preview/<doc-id>/_watch/` returns the OfficeCLI watch page.
 
 ## Agent Flow
 
