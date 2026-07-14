@@ -6,15 +6,11 @@ import importlib.util
 import json
 import os
 import re
-import shutil
 from functools import lru_cache
 from pathlib import Path
 from types import ModuleType
-from typing import Callable
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-PORT_RE = re.compile(r"^([1-9][0-9]{0,4})$")
-DEFAULT_PORT_RE = re.compile(r"(?m)^\s*DEFAULT_PORT\s*=\s*([0-9]+)\s*$")
 MANAGER_RE = (
     r"(?:(?:a|the)[ \t]+)?(?:docker[ \t]+compose|supervisord?|"
     r"(?:deployment[ \t]+)?supervisor|systemd(?:[ \t]+service[ \t]+unit)?|"
@@ -49,7 +45,7 @@ REFERENCE_SCRIPT_ACTION_RE = re.compile(
     re.IGNORECASE,
 )
 LIFECYCLE_SCRIPT_SUFFIXES = frozenset({".sh", ".py", ".js", ".mjs", ".cjs"})
-LIFECYCLE_ACTIONS = frozenset({"start", "run", "launch", "launcher", "serve", "server"})
+LIFECYCLE_ACTIONS = frozenset({"start", "run", "launch", "launcher", "serve"})
 LIFECYCLE_OBJECTS = frozenset({"liveware", "server", "service", "app"})
 PM2_CONFIG_NAMES = frozenset(
     {
@@ -61,15 +57,21 @@ PM2_CONFIG_NAMES = frozenset(
         "pm2.config.mjs",
     }
 )
-REFERENCE_EXAMPLE_RE = re.compile(
-    r"\b(?:badge|badges|color[ \t]+labels?|docs?|documentation|examples?|lint|linting|tests?|testing)\b",
+REFERENCE_SCRIPT_HARMLESS_RE = re.compile(
+    r"^(?:(?:for[ \t]+(?:tests?|testing|linting)(?:[ \t]+only)?)|"
+    r"(?:as[ \t]+an?[ \t]+example)),[ \t]+|"
+    r"[ \t]+for[ \t]+(?:tests?|testing|linting)(?:[ \t]+only)?$",
     re.IGNORECASE,
 )
 
 
 def reference_declares_lifecycle(text: str) -> bool:
     for statement in re.split(r"[!?;\n]+|\.(?=\s|$)", text):
-        statement = statement.strip()
+        statement = re.sub(
+            r"^\s*(?:(?:[-*+])|(?:[0-9]+[.)]))\s+",
+            "",
+            statement,
+        ).strip()
         if not statement:
             continue
         if any(pattern.fullmatch(statement) is not None for pattern in REFERENCE_LIFECYCLE_PATTERNS):
@@ -77,17 +79,17 @@ def reference_declares_lifecycle(text: str) -> bool:
         for match in REFERENCE_SCRIPT_ACTION_RE.finditer(statement):
             if (
                 lifecycle_script_name(Path(match.group(1)))
-                and REFERENCE_EXAMPLE_RE.search(statement[match.end():]) is None
+                and REFERENCE_SCRIPT_HARMLESS_RE.search(statement) is None
             ):
                 return True
     return False
 
 
 def lifecycle_script_name(path: Path) -> bool:
-    if path.suffix.lower() not in LIFECYCLE_SCRIPT_SUFFIXES:
-        return False
     if path.stem.lower() == "start":
         return True
+    if path.suffix.lower() not in LIFECYCLE_SCRIPT_SUFFIXES:
+        return False
     tokens = set(re.findall(r"[a-z0-9]+", path.stem.lower()))
     return bool(tokens & LIFECYCLE_ACTIONS) and bool(tokens & LIFECYCLE_OBJECTS)
 
@@ -156,75 +158,113 @@ def lifecycle_signals(
     target: Path,
     liveware: Path,
     skill_name: str,
-) -> tuple[list[Path], list[Path]]:
+) -> tuple[list[Path], list[Path], list[Path]]:
     unreadable: list[Path] = []
+    unsafe: list[Path] = []
     start = liveware / "scripts" / "start.sh"
-    paths = [
-        target / "Dockerfile",
-        target / "docker-compose.yml",
-        target / "docker-compose.yaml",
-        target / "compose.yml",
-        target / "compose.yaml",
-        target / "supervisord.conf",
-        target / "supervisor.conf",
-        target / "s6",
-        target / "s6-rc.d",
-    ]
-    try:
-        paths.extend(sorted(target.glob("*.service")))
-    except (OSError, RuntimeError):
-        unreadable.append(target)
-    try:
-        if liveware.is_dir() and not liveware.is_symlink():
-            paths.extend(sorted(liveware.glob("*.service")))
-    except (OSError, RuntimeError):
-        unreadable.append(liveware)
+    manager_names = (
+        "Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml",
+        "supervisord.conf",
+        "supervisor.conf",
+        "s6",
+        "s6-rc.d",
+    )
+    paths = [parent / name for parent in (target, liveware) for name in manager_names]
     for parent in (target, liveware):
         paths.extend(parent / name for name in sorted(PM2_CONFIG_NAMES))
     if not is_exact_canonical_generated_start(start, target, skill_name):
         paths.append(start)
-    scripts = target / "scripts"
-    try:
-        if scripts.is_dir() and not scripts.is_symlink():
-            if not os.access(scripts, os.R_OK | os.X_OK):
-                raise PermissionError(scripts)
-            for path in sorted(scripts.iterdir()):
-                if (
-                    path.is_file()
-                    and not path.is_symlink()
-                    and lifecycle_script_name(path)
-                ):
-                    paths.append(path)
-    except (OSError, RuntimeError):
-        unreadable.append(scripts)
+
+    def list_directory(directory: Path) -> list[Path]:
+        if not path_present(directory):
+            return []
+        if not path_resolves_inside(directory, target):
+            unsafe.append(directory)
+            return []
+        try:
+            if not directory.is_dir():
+                return []
+            if not os.access(directory, os.R_OK | os.X_OK):
+                raise PermissionError(directory)
+            return sorted(directory.iterdir())
+        except (OSError, RuntimeError):
+            unreadable.append(directory)
+            return []
+
+    for directory in (target, liveware, target / "scripts", liveware / "scripts"):
+        for path in list_directory(directory):
+            if path.suffix.lower() != ".service" and not lifecycle_script_name(path):
+                continue
+            if not path_resolves_inside(path, target):
+                unsafe.append(path)
+                continue
+            try:
+                is_file = path.is_file()
+            except OSError:
+                unreadable.append(path)
+                continue
+            if not is_file:
+                continue
+            relative = target_relative(path, target)
+            if relative == "liveware/scripts/start.sh" and is_exact_canonical_generated_start(
+                path,
+                target,
+                skill_name,
+            ):
+                continue
+            paths.append(path)
 
     references = target / "references"
-    try:
-        if references.is_dir() and not references.is_symlink():
-            if not os.access(references, os.R_OK | os.X_OK):
-                raise PermissionError(references)
-            for path in sorted(references.rglob("*")):
-                if not path.is_file() or path.is_symlink():
+    pending = [references]
+    visited: set[Path] = set()
+    while pending:
+        directory = pending.pop()
+        if not path_present(directory):
+            continue
+        if not path_resolves_inside(directory, target):
+            unsafe.append(directory)
+            continue
+        try:
+            resolved = directory.resolve(strict=False)
+        except (OSError, RuntimeError):
+            unreadable.append(directory)
+            continue
+        if resolved in visited:
+            continue
+        visited.add(resolved)
+        for path in list_directory(directory):
+            if not path_resolves_inside(path, target):
+                unsafe.append(path)
+                continue
+            try:
+                if path.is_dir():
+                    pending.append(path)
                     continue
-                try:
-                    declared_signal = reference_declares_lifecycle(
-                        path.read_text(encoding="utf-8")
-                    )
-                except (OSError, UnicodeError):
-                    unreadable.append(path)
+                if not path.is_file():
                     continue
-                if declared_signal:
-                    paths.append(path)
-    except (OSError, RuntimeError):
-        unreadable.append(references)
+                declared_signal = reference_declares_lifecycle(
+                    path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeError, RuntimeError):
+                unreadable.append(path)
+                continue
+            if declared_signal:
+                paths.append(path)
 
     unique: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
+        if path_present(path) and not path_resolves_inside(path, target):
+            unsafe.append(path)
+            continue
         if path_present(path) and path not in seen:
             seen.add(path)
             unique.append(path)
-    return unique, unreadable
+    return unique, unreadable, unsafe
 
 
 def automatic_candidate_evidence(
@@ -270,10 +310,6 @@ def parse_frontmatter_text(text: str) -> dict[str, str]:
 
 def parse_frontmatter(path: Path) -> dict[str, str]:
     return parse_frontmatter_text(path.read_text(encoding="utf-8"))
-
-
-def valid_port(value: int) -> bool:
-    return 1 <= value <= 65535 and PORT_RE.fullmatch(str(value)) is not None
 
 
 def base_result(target: Path) -> dict[str, object]:
@@ -347,10 +383,7 @@ def reject_escaping_candidate(
     return True
 
 
-def analyze_target(
-    target_root: Path,
-    which: Callable[[str], str | None] = shutil.which,
-) -> dict[str, object]:
+def analyze_target(target_root: Path) -> dict[str, object]:
     try:
         target = target_root.expanduser().resolve()
     except (OSError, RuntimeError) as exc:
@@ -396,7 +429,31 @@ def analyze_target(
         if reject_escaping_candidate(result, target, candidate, label):
             return result
 
-    found_signals, unreadable_lifecycle = lifecycle_signals(target, liveware, name)
+    found_signals, unreadable_lifecycle, unsafe_lifecycle = lifecycle_signals(
+        target,
+        liveware,
+        name,
+    )
+    if unsafe_lifecycle:
+        for path in unsafe_lifecycle:
+            record_path_issue(
+                result,
+                target,
+                path,
+                f"Lifecycle or reference evidence resolves outside the target root: {target_relative(path, target)}",
+                "Unsafe lifecycle or reference evidence",
+            )
+        evidence.extend(
+            item
+            for item in automatic_candidate_evidence(
+                target,
+                python_server,
+                package_files,
+                static_index,
+            )
+            if item not in evidence
+        )
+        return result
     if unreadable_lifecycle:
         result["status"] = "blocked"
         for path in unreadable_lifecycle:
@@ -440,31 +497,17 @@ def analyze_target(
         source = read_analysis_text(result, target, python_server, "Python server entrypoint")
         if source is None:
             return result
-        match = DEFAULT_PORT_RE.search(source)
-        if match is None or not valid_port(int(match.group(1))):
-            result["status"] = "ambiguous"
-            issues.append("No unambiguous default port was found")
-            evidence.append({"path": "liveware/server.py", "reason": "Python server entrypoint"})
-            return result
-        port = int(match.group(1))
-        health_path = "/healthz" if '"/healthz"' in source or "'/healthz'" in source else "/"
-        result["adapter"] = {
-            "kind": "managed-command",
-            "workdir": "liveware",
-            "command": ["python3", "server.py", "--port", "{port}"],
-            "required_commands": ["python3"],
-            "default_port": port,
-            "readiness": {"kind": "http", "url": f"http://127.0.0.1:{{port}}{health_path}"},
-            "log": {"owner": "generated-start", "path": f"$HOME/.clawling/apps/{name}.server.log"},
-        }
-        result["static_dir"] = "liveware/static" if static_index.is_file() else None
-        evidence.append({"path": "liveware/server.py", "reason": f"Python entrypoint with port {port}"})
-        missing = [command for command in ["python3"] if which(command) is None]
-        if missing:
-            issues.extend(f"Missing required command: {command}" for command in missing)
-            result["status"] = "blocked"
-        else:
-            result["status"] = "ready"
+        del source
+        result["status"] = "ambiguous"
+        evidence.append(
+            {
+                "path": "liveware/server.py",
+                "reason": "Python server candidate requiring interface confirmation",
+            }
+        )
+        issues.append(
+            "Confirm the Python command's exact argv, default port, readiness check, lifecycle and logging ownership, and whether it consumes exported PORT or uses a standalone {port} argument"
+        )
         return result
 
     for package_file in package_files:
@@ -479,7 +522,29 @@ def analyze_target(
             result["status"] = "blocked"
             issues.append(f"Invalid JSON: {package_file.relative_to(target)}")
             return result
-        scripts = package.get("scripts", {}) if isinstance(package, dict) else {}
+        if not isinstance(package, dict):
+            result["status"] = "blocked"
+            evidence.append(
+                {
+                    "path": str(package_file.relative_to(target)),
+                    "reason": "Node package metadata must be an object",
+                }
+            )
+            issues.append(f"Package metadata must be a JSON object: {package_file.relative_to(target)}")
+            return result
+        scripts = package.get("scripts", {})
+        if not isinstance(scripts, dict):
+            result["status"] = "blocked"
+            evidence.append(
+                {
+                    "path": str(package_file.relative_to(target)),
+                    "reason": "Node package scripts must be an object",
+                }
+            )
+            issues.append(
+                f"Package scripts must be a JSON object: {package_file.relative_to(target)}"
+            )
+            return result
         script_name = "liveware" if isinstance(scripts.get("liveware"), str) else "start" if isinstance(scripts.get("start"), str) else ""
         if not script_name:
             evidence.append({"path": str(package_file.relative_to(target)), "reason": "Package metadata without a Liveware or start script"})
@@ -514,7 +579,7 @@ def analyze_target(
                 }
             )
         issues.append(
-            "Confirm the Node command's exact argv and default port, and whether it consumes exported PORT or uses a standalone {port} argument"
+            "Confirm the Node command's exact argv, default port, readiness check, lifecycle and logging ownership, and whether it consumes exported PORT or uses a standalone {port} argument"
         )
         return result
 

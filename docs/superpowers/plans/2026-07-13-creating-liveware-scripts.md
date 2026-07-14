@@ -4,7 +4,7 @@
 
 **Goal:** Build a repository-scoped Codex skill that safely generates, audits, and repairs ClawChat Liveware `setup.py` and `start.sh` files for arbitrary Hermes skill servers.
 
-**Architecture:** Create a read-only target analyzer, a deterministic renderer backed by two templates, and a static validator. Keep the target server adapter separate from the standard Liveware binding block so the skill can preserve Python, Node, static, existing-launcher, or externally managed server interfaces without standardizing the server itself.
+**Architecture:** Create a read-only target analyzer, a deterministic renderer backed by two templates, and a static validator. Static content is the only automatic ready adapter; Python and Node are evidence candidates until their complete dynamic interface is user-confirmed. Keep the target server adapter separate from the standard Liveware binding block so the skill can preserve Python, Node, static, existing-launcher, or externally managed server interfaces without standardizing the server itself.
 
 **Tech Stack:** Python 3 standard library, Bash, `unittest`, Codex skill metadata, and the existing `skill-creator` validation scripts.
 
@@ -19,6 +19,7 @@
 - Authenticate only through `clawchat_gateway.tools.liveware_login()`; never read, print, save, or directly pass a token.
 - Never install dependencies, delete Liveware apps, kill unknown processes, use `shell=True`, or bind a dynamic tunnel to a non-loopback upstream.
 - Treat ambiguous entrypoints, ports, lifecycle ownership, readiness checks, or logging ownership as blocking questions; never guess.
+- Never promote Python or Node source to a ready adapter automatically. Require user confirmation of exact argv, default port, readiness, lifecycle/logging ownership, and exported-`PORT` or standalone-`{port}` behavior.
 - Without a real user-provided Hermes/ClawChat/Liveware environment, run static checks only. Do not run generated setup/start scripts and do not create fake plugins, CLIs, servers, or successful runtime simulations.
 - Use `name` for `liveware app create`, state filenames, and identity. Use `display_name`, falling back to `name`, only for ClawChat registration.
 - Embed the same deterministic URL-safe Base64 schema-version-1 analysis manifest comment in setup.py and start.sh. Accept only the closed `analyze_target.py` schema with no additional properties at any object level. The generator never reads credentials, so credential fields cannot be embedded; ordinary words in allowed display/evidence text are not scanned.
@@ -103,9 +104,17 @@ git commit -m "test: capture liveware skill baseline"
 - Create: `.agents/skills/creating-liveware-scripts/scripts/analyze_target.py`
 
 **Interfaces:**
-- Consumes: a target Hermes skill root and optional executable resolver
-- Produces: `analyze_target(target_root: Path, which: Callable[[str], str | None] = shutil.which) -> dict[str, object]`
+- Consumes: a target Hermes skill root
+- Produces: `analyze_target(target_root: Path) -> dict[str, object]`
 - JSON schema: `schema_version`, `status`, `target_root`, `skill_name`, `display_name`, `adapter`, `static_dir`, `evidence`, and `issues`
+
+**Final conservative dynamic-candidate amendment (supersedes older Task 2 snippets below):**
+
+- Static content is the only automatic `ready` adapter. Python and Node entrypoints always produce schema-complete `ambiguous` evidence until the user confirms exact argv, default port, readiness, lifecycle/logging ownership, and the `PORT` contract.
+- Do not infer Python or Node command, port, readiness, or logging from `DEFAULT_PORT`, routes, package scripts, or source text. Manual confirmed dynamic adapters remain supported by the renderer and validator.
+- A present non-object package `scripts` value returns structured non-ready JSON and CLI status `2`.
+- Discover bounded exact lifecycle filenames in the target root, `liveware/`, `scripts/`, and `liveware/scripts/`, plus manager and unit files. Strip Markdown bullet/number prefixes before bounded full-statement lifecycle matching.
+- Resolve every lifecycle/reference symlink before inspection. Contained symlinks may be inspected; outside or unresolvable paths block. Directory read/enumeration failures are structured non-ready results.
 
 - [ ] **Step 1: Initialize the repository skill with English UI metadata**
 
@@ -1879,11 +1888,11 @@ Expected GREEN result: all five samples load the skill, avoid runtime execution,
 
 Run one fresh subagent per scenario:
 
-1. Generate scripts for a disposable Tarot copy and statically validate the output.
+1. Generate scripts for a disposable static target and statically validate the output.
 2. Audit the tracked Office legacy scripts read-only and report fixed-path/state/app-recovery differences without modifying Office files.
-3. Analyze a disposable target with `SKILL.md` and a `liveware/server.py` that has no discoverable port; verify that the agent asks one concrete port question and does not render files.
+3. Analyze disposable Python and Node targets; verify that each remains non-ready and the agent requests confirmation of the exact argv, default port, readiness, lifecycle/logging ownership, and `PORT` contract without rendering files.
 
-Expected: the Tarot generated files pass `py_compile`, `bash -n`, and `validate_scripts.py`; Office receives findings only; the ambiguous target receives exactly one blocking question.
+Expected: the static target's generated files pass `py_compile`, `bash -n`, and `validate_scripts.py`; Office receives findings only; each dynamic target receives one blocking question covering its unresolved interface.
 
 - [ ] **Step 3: Refactor only demonstrated failures**
 
@@ -1939,14 +1948,15 @@ Expected: `quick_validate.py` succeeds; `rg` exits `1` with no matches because e
 
 - [ ] **Step 3: Generate into a disposable target and run static checks only**
 
-Create a disposable Tarot copy, preserve its legacy scripts under a nonstandard backup name inside that copy, analyze the real server, render the new fixed paths, and run static checks:
+Create a disposable static Hermes skill, analyze it, render the fixed paths, and run static checks:
 
 ```bash
 VERIFY_ROOT="$(mktemp -d /tmp/creating-liveware-scripts-verify.XXXXXX)"
-TARGET="$VERIFY_ROOT/tarot-arcana"
+TARGET="$VERIFY_ROOT/static-sample"
 ANALYSIS="$VERIFY_ROOT/analysis.json"
-cp -R creative/tarot-arcana "$TARGET"
-mv "$TARGET/liveware/scripts" "$TARGET/liveware/legacy-scripts"
+mkdir -p "$TARGET/liveware/static"
+printf '%s\n' '---' 'name: static-sample' 'description: Static verification target.' '---' >"$TARGET/SKILL.md"
+printf '%s\n' '<!doctype html>' >"$TARGET/liveware/static/index.html"
 python3 .agents/skills/creating-liveware-scripts/scripts/analyze_target.py "$TARGET" > "$ANALYSIS"
 python3 .agents/skills/creating-liveware-scripts/scripts/render_scripts.py "$TARGET" "$ANALYSIS" --apply
 python3 -m py_compile "$TARGET/liveware/scripts/setup.py"

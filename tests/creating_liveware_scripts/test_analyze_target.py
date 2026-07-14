@@ -42,7 +42,7 @@ class AnalyzeTargetTests(unittest.TestCase):
         static.mkdir(parents=True, exist_ok=True)
         (static / "index.html").write_text("<!doctype html>", encoding="utf-8")
 
-    def test_detects_python_server_and_preserves_display_name(self) -> None:
+    def test_python_server_requires_a_user_confirmed_interface(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = write_target(Path(tmp), display_name="塔罗入口")
             liveware = target / "liveware"
@@ -50,16 +50,44 @@ class AnalyzeTargetTests(unittest.TestCase):
             (liveware / "server.py").write_text(
                 'DEFAULT_PORT = 5080\nROUTES = ["/healthz"]\n', encoding="utf-8"
             )
-            result = self.module.analyze_target(target, which=lambda command: f"/bin/{command}")
-        self.assertEqual(result["status"], "ready")
+            result = self.module.analyze_target(target)
+        self.assertEqual(result["status"], "ambiguous")
         self.assertEqual(result["target_root"], str(target.resolve()))
         self.assertFalse(result["target_root"].startswith("//"))
         self.assertEqual(result["skill_name"], "sample-skill")
         self.assertEqual(result["display_name"], "塔罗入口")
-        self.assertEqual(result["adapter"]["kind"], "managed-command")
-        self.assertEqual(result["adapter"]["command"], ["python3", "server.py", "--port", "{port}"])
-        self.assertEqual(result["adapter"]["default_port"], 5080)
-        self.assertEqual(result["adapter"]["readiness"]["url"], "http://127.0.0.1:{port}/healthz")
+        self.assertIsNone(result["adapter"])
+        self.assertEqual(result["evidence"][-1]["path"], "liveware/server.py")
+        issue = result["issues"][-1]
+        for required in (
+            "exact argv",
+            "default port",
+            "readiness",
+            "lifecycle",
+            "logging",
+            "PORT",
+        ):
+            self.assertIn(required, issue)
+
+    def test_python_source_never_proves_a_dynamic_interface(self) -> None:
+        sources = (
+            'DEFAULT_PORT = 5080\nROUTES = ["/healthz"]\n',
+            'DEFAULT_PORT = 5080\nprint("/healthz")\n',
+            'DEFAULT_PORT = 5080\nthis is not valid python\n',
+        )
+        for source in sources:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp))
+                liveware = target / "liveware"
+                liveware.mkdir()
+                (liveware / "server.py").write_text(source, encoding="utf-8")
+                result = self.module.analyze_target(target)
+            self.assertIn(result["status"], {"ambiguous", "blocked"})
+            self.assertIsNone(result["adapter"])
+            self.assertIn(
+                "liveware/server.py",
+                {item["path"] for item in result["evidence"]},
+            )
 
     def test_detects_static_directory_without_creating_a_server(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -67,7 +95,7 @@ class AnalyzeTargetTests(unittest.TestCase):
             static = target / "liveware" / "static"
             static.mkdir(parents=True)
             (static / "index.html").write_text("<!doctype html>", encoding="utf-8")
-            result = self.module.analyze_target(target, which=lambda command: f"/bin/{command}")
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["adapter"]["kind"], "static")
         self.assertEqual(result["static_dir"], "liveware/static")
@@ -86,7 +114,7 @@ class AnalyzeTargetTests(unittest.TestCase):
                 'const port = Number(process.env.PORT || 4173);\nserver.listen(port);\nconst health = "/healthz";\n',
                 encoding="utf-8",
             )
-            result = self.module.analyze_target(target, which=lambda command: f"/bin/{command}")
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["adapter"])
         self.assertEqual(
@@ -95,6 +123,9 @@ class AnalyzeTargetTests(unittest.TestCase):
         )
         self.assertIn("exact argv", result["issues"][-1])
         self.assertIn("exported PORT", result["issues"][-1])
+        self.assertIn("readiness", result["issues"][-1])
+        self.assertIn("lifecycle", result["issues"][-1])
+        self.assertIn("logging", result["issues"][-1])
 
     def test_node_hardcoded_port_is_ambiguous_without_exported_port_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -109,19 +140,53 @@ class AnalyzeTargetTests(unittest.TestCase):
                 "const port = 4173;\n",
                 encoding="utf-8",
             )
-            result = self.module.analyze_target(
-                target,
-                which=lambda command: f"/bin/{command}",
-            )
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["adapter"])
         self.assertIn("exported PORT", result["issues"][-1])
+
+    def test_non_object_package_scripts_is_structured_for_api_and_cli(self) -> None:
+        for scripts in (None, [], "node server.js"):
+            with self.subTest(scripts=scripts), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp))
+                liveware = target / "liveware"
+                liveware.mkdir()
+                (liveware / "package.json").write_text(
+                    json.dumps({"scripts": scripts}),
+                    encoding="utf-8",
+                )
+                api_result = self.module.analyze_target(target)
+                completed = subprocess.run(
+                    [sys.executable, str(Path(self.module.__file__)), str(target)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            self.assertIn(api_result["status"], {"blocked", "ambiguous"})
+            self.assertIsNone(api_result["adapter"])
+            self.assertEqual(
+                set(api_result),
+                {
+                    "schema_version",
+                    "status",
+                    "target_root",
+                    "skill_name",
+                    "display_name",
+                    "adapter",
+                    "static_dir",
+                    "evidence",
+                    "issues",
+                },
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertEqual(completed.stderr, "")
+            self.assertEqual(json.loads(completed.stdout)["status"], api_result["status"])
 
     def test_reports_service_manager_evidence_without_inventing_a_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = write_target(Path(tmp))
             (target / "supervisord.conf").write_text("[program:sample]\ncommand=node server.js\n", encoding="utf-8")
-            result = self.module.analyze_target(target, which=lambda command: f"/bin/{command}")
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["adapter"])
         self.assertEqual(result["evidence"][-1]["path"], "supervisord.conf")
@@ -165,10 +230,7 @@ class AnalyzeTargetTests(unittest.TestCase):
                 target = write_target(Path(tmp))
                 write_candidate(target)
                 write_signal(target)
-                result = self.module.analyze_target(
-                    target,
-                    which=lambda command: f"/bin/{command}",
-                )
+                result = self.module.analyze_target(target)
             self.assertEqual(result["status"], "ambiguous")
             self.assertIsNone(result["adapter"])
             paths = {item["path"] for item in result["evidence"]}
@@ -209,18 +271,26 @@ class AnalyzeTargetTests(unittest.TestCase):
 
     def test_generic_and_non_shell_lifecycle_launchers_block_static_detection(self) -> None:
         launchers = {
+            "run-liveware.py": "import liveware_server\nliveware_server.run()\n",
+            "start.js": "app.listen(process.env.PORT);\n",
+            "start.ts": "serve();\n",
+            "liveware/run-liveware.py": "import liveware_server\nliveware_server.run()\n",
+            "liveware/start.js": "app.listen(process.env.PORT);\n",
+            "liveware/start.rb": "serve\n",
             "scripts/start.sh": "#!/usr/bin/env bash\nexec liveware-server\n",
             "scripts/run-liveware.py": "import liveware_server\nliveware_server.run()\n",
             "scripts/start.js": "app.listen(process.env.PORT);\n",
+            "scripts/start.ts": "serve();\n",
             "scripts/launch-app.mjs": "export default {};\n",
+            "liveware/scripts/start.rb": "serve\n",
         }
         for launcher, content in launchers.items():
             with self.subTest(launcher=launcher), tempfile.TemporaryDirectory() as tmp:
                 target = write_target(Path(tmp))
                 self.write_static_candidate(target)
-                scripts = target / "scripts"
-                scripts.mkdir()
-                (target / launcher).write_text(content, encoding="utf-8")
+                path = target / launcher
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
                 result = self.module.analyze_target(target)
             self.assertEqual(result["status"], "ambiguous")
             self.assertIn(launcher, {item["path"] for item in result["evidence"]})
@@ -242,12 +312,34 @@ class AnalyzeTargetTests(unittest.TestCase):
             self.assertEqual(result["status"], "ready")
             self.assertEqual(result["adapter"]["kind"], "static")
 
+    def test_unrelated_outside_symlinks_do_not_count_as_lifecycle_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = write_target(root)
+            self.write_static_candidate(target)
+            outside = root / "outside"
+            outside.mkdir()
+            note = outside / "README.md"
+            note.write_text("Unrelated notes.\n", encoding="utf-8")
+            (target / "README-link.md").symlink_to(note)
+            scripts = target / "scripts"
+            scripts.mkdir()
+            harmless = outside / "restart-tests.sh"
+            harmless.write_text("#!/usr/bin/env bash\ntrue\n", encoding="utf-8")
+            (scripts / "restart-tests.sh").symlink_to(harmless)
+            result = self.module.analyze_target(target)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["adapter"]["kind"], "static")
+
     def test_reference_filename_without_lifecycle_declaration_does_not_block(self) -> None:
         texts = (
             "# Product notes\nThis page describes visible UI labels only.\n",
             "The Docker SDK client is available through the API.\n",
             "The Start command is displayed in the menu.\n",
             "Run scripts/check-liveware.sh for linting only.\n",
+            "For tests, run scripts/start-server.sh.\n",
+            "For linting only, use scripts/start-server.sh.\n",
+            "As an example, run scripts/start-server.sh.\n",
         )
         for text in texts:
             with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
@@ -268,6 +360,10 @@ class AnalyzeTargetTests(unittest.TestCase):
             "PM2 manages the service in production.\n",
             "The server is managed by a systemd service unit.\n",
             "Use systemctl start probe.service.\n",
+            "- PM2 manages the service in production.\n",
+            "1. The service runs under supervisor.\n",
+            "Run scripts/start-server.sh in production and update documentation.\n",
+            "Run scripts/start-server.sh to launch the service and run tests afterward.\n",
         )
         for declaration in declarations:
             with self.subTest(declaration=declaration), tempfile.TemporaryDirectory() as tmp:
@@ -282,6 +378,93 @@ class AnalyzeTargetTests(unittest.TestCase):
                 "references/runtime.md",
                 {item["path"] for item in result["evidence"]},
             )
+
+    def test_lifecycle_and_reference_symlinks_are_containment_checked(self) -> None:
+        def lifecycle_file(target: Path, storage: Path, outside: bool) -> str:
+            storage.mkdir(exist_ok=True)
+            destination = storage / "run-liveware.py"
+            destination.write_text("print('launcher')\n", encoding="utf-8")
+            scripts = target / "scripts"
+            scripts.mkdir()
+            (scripts / "run-liveware.py").symlink_to(destination)
+            return "scripts/run-liveware.py"
+
+        def scripts_directory(target: Path, storage: Path, outside: bool) -> str:
+            storage.mkdir(exist_ok=True)
+            (storage / "start.js").write_text("app.listen(4173);\n", encoding="utf-8")
+            (target / "scripts").symlink_to(storage, target_is_directory=True)
+            return "scripts/start.js"
+
+        def reference_file(target: Path, storage: Path, outside: bool) -> str:
+            storage.mkdir(exist_ok=True)
+            destination = storage / "runtime.md"
+            destination.write_text("PM2 manages the service.\n", encoding="utf-8")
+            references = target / "references"
+            references.mkdir()
+            (references / "runtime.md").symlink_to(destination)
+            return "references/runtime.md"
+
+        def references_directory(target: Path, storage: Path, outside: bool) -> str:
+            storage.mkdir(exist_ok=True)
+            (storage / "runtime.md").write_text(
+                "- PM2 manages the service.\n",
+                encoding="utf-8",
+            )
+            (target / "references").symlink_to(storage, target_is_directory=True)
+            return "references/runtime.md"
+
+        builders = (lifecycle_file, scripts_directory, reference_file, references_directory)
+        for build in builders:
+            for outside in (False, True):
+                with (
+                    self.subTest(build=build.__name__, outside=outside),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    root = Path(tmp)
+                    target = write_target(root)
+                    self.write_static_candidate(target)
+                    storage = (
+                        root / "outside" / build.__name__
+                        if outside
+                        else target / "contained" / build.__name__
+                    )
+                    storage.parent.mkdir(parents=True, exist_ok=True)
+                    evidence_path = build(target, storage, outside)
+                    result = self.module.analyze_target(target)
+                if outside:
+                    self.assertEqual(result["status"], "blocked")
+                    self.assertIsNone(result["adapter"])
+                    self.assertTrue(any("outside" in issue.lower() for issue in result["issues"]))
+                    expected_evidence = {
+                        evidence_path,
+                        evidence_path.split("/", 1)[0],
+                    }
+                else:
+                    self.assertEqual(result["status"], "ambiguous")
+                    expected_evidence = {evidence_path}
+                self.assertTrue(
+                    expected_evidence
+                    & {item["path"] for item in result["evidence"]}
+                )
+
+    def test_lifecycle_directory_oserror_returns_structured_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = write_target(Path(tmp))
+            self.write_static_candidate(target)
+            scripts = target / "scripts"
+            scripts.mkdir()
+            original = Path.iterdir
+
+            def raising(path: Path):
+                if path.resolve() == scripts.resolve():
+                    raise OSError("simulated enumeration failure")
+                return original(path)
+
+            with mock.patch.object(Path, "iterdir", raising):
+                result = self.module.analyze_target(target)
+        self.assertEqual(result["status"], "blocked")
+        self.assertIsNone(result["adapter"])
+        self.assertIn("scripts", {item["path"] for item in result["evidence"]})
 
     def test_service_units_and_pm2_configs_are_lifecycle_evidence(self) -> None:
         paths = (
@@ -452,10 +635,7 @@ class AnalyzeTargetTests(unittest.TestCase):
                 outside = root / "outside"
                 outside.mkdir()
                 evidence_path = build(target, outside)
-                result = self.module.analyze_target(
-                    target,
-                    which=lambda command: f"/bin/{command}",
-                )
+                result = self.module.analyze_target(target)
             self.assertIn(result["status"], {"blocked", "ambiguous"})
             self.assertIsNone(result["adapter"])
             self.assertIn(evidence_path, {item["path"] for item in result["evidence"]})
@@ -546,43 +726,35 @@ class AnalyzeTargetTests(unittest.TestCase):
     def test_exact_canonical_generated_start_is_not_lifecycle_ambiguity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = write_target(Path(tmp))
-            self.write_python_candidate(target)
-            first = self.module.analyze_target(
-                target,
-                which=lambda command: f"/bin/{command}",
-            )
+            self.write_static_candidate(target)
+            first = self.module.analyze_target(target)
             scripts = target / "liveware" / "scripts"
             scripts.mkdir(parents=True)
             (scripts / "start.sh").write_text(
                 self.renderer.render_start(first),
                 encoding="utf-8",
             )
-            second = self.module.analyze_target(
-                target,
-                which=lambda command: f"/bin/{command}",
-            )
+            second = self.module.analyze_target(target)
         self.assertEqual(first["status"], "ready")
         self.assertEqual(second, first)
 
     def test_plausible_or_tampered_generated_markers_do_not_hide_a_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = write_target(Path(tmp))
-            self.write_python_candidate(target)
-            analysis = self.module.analyze_target(
-                target,
-                which=lambda command: f"/bin/{command}",
-            )
+            self.write_static_candidate(target)
+            analysis = self.module.analyze_target(target)
             scripts = target / "liveware" / "scripts"
             scripts.mkdir(parents=True)
             canonical = self.renderer.render_start(analysis)
             (scripts / "start.sh").write_text(
-                canonical.replace("SERVER_COMMAND=(python3", "SERVER_COMMAND=(nohup python3", 1),
+                canonical.replace(
+                    "# Static content requires no server process.",
+                    "# Tampered static launcher.\n# Static content requires no server process.",
+                    1,
+                ),
                 encoding="utf-8",
             )
-            result = self.module.analyze_target(
-                target,
-                which=lambda command: f"/bin/{command}",
-            )
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIn(
             "liveware/scripts/start.sh",
@@ -591,10 +763,7 @@ class AnalyzeTargetTests(unittest.TestCase):
 
     def test_real_tarot_launcher_prevents_automatic_python_replacement(self) -> None:
         target = REPO_ROOT / "creative" / "tarot-arcana"
-        result = self.module.analyze_target(
-            target,
-            which=lambda command: f"/bin/{command}",
-        )
+        result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["adapter"])
         self.assertIn(
@@ -602,15 +771,16 @@ class AnalyzeTargetTests(unittest.TestCase):
             {item["path"] for item in result["evidence"]},
         )
 
-    def test_blocks_when_a_declared_dependency_is_missing(self) -> None:
+    def test_python_candidate_does_not_probe_dependencies_before_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             target = write_target(Path(tmp))
             liveware = target / "liveware"
             liveware.mkdir()
             (liveware / "server.py").write_text("DEFAULT_PORT = 5080\n", encoding="utf-8")
-            result = self.module.analyze_target(target, which=lambda command: None)
-        self.assertEqual(result["status"], "blocked")
-        self.assertIn("Missing required command: python3", result["issues"])
+            result = self.module.analyze_target(target)
+        self.assertEqual(result["status"], "ambiguous")
+        self.assertIsNone(result["adapter"])
+        self.assertFalse(any("Missing required command" in issue for issue in result["issues"]))
 
     def test_reports_ambiguous_instead_of_guessing_a_port(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -618,9 +788,9 @@ class AnalyzeTargetTests(unittest.TestCase):
             liveware = target / "liveware"
             liveware.mkdir()
             (liveware / "server.py").write_text("print('server')\n", encoding="utf-8")
-            result = self.module.analyze_target(target, which=lambda command: f"/bin/{command}")
+            result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
-        self.assertIn("No unambiguous default port was found", result["issues"])
+        self.assertIn("exact argv", result["issues"][-1])
 
     def test_blocks_invalid_or_missing_skill_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

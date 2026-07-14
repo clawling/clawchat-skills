@@ -12,7 +12,7 @@ Standardize Liveware integration, not the target server. Preserve the supplied c
 ## Workflow
 
 1. Locate the target Hermes skill root. Require `SKILL.md`; output only `liveware/scripts/setup.py` and `liveware/scripts/start.sh`. Read `references/liveware-script-contract.md` completely.
-2. Capture analyzer stdout outside the target, then inspect every evidence path and reason:
+2. Capture analyzer stdout outside target, then inspect every evidence path and reason:
 
 ```bash
 TARGET=/absolute/path/to/hermes-skill
@@ -39,7 +39,7 @@ PYTHONPYCACHEPREFIX="$ANALYSIS_DIR/pycache" python3 -B -m py_compile "$TARGET/li
 bash -n "$TARGET/liveware/scripts/start.sh"
 ```
 
-Report static results and unresolved runtime requirements.
+Report static results and unresolved runtime needs.
 
 ## Quick Reference
 
@@ -63,7 +63,7 @@ For a confirmed externally managed Node service at port `4173`, use an `external
 
 ## Safety Boundary
 
-Do not install, download, delete apps, kill unknown processes, read credentials, or use `shell=True`. Reject path escapes; keep automatic Node candidates ambiguous. Do not run generated setup.py or start.sh without a real user-provided environment and authorization. Never claim fake runtime success. Report that runtime validation was not performed.
+Do not install, download, delete apps, kill unknown processes, read credentials, or use `shell=True`. Reject path escapes. Automatic Python and Node candidates are evidence only. Do not run generated setup.py or start.sh without a real user-provided environment and authorization. Never claim fake runtime success. Report that runtime validation was not performed.
 
 ## Red Flags
 

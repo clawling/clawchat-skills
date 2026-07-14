@@ -362,49 +362,44 @@ class RenderSetupTests(unittest.TestCase):
                     self.module.encode_analysis_manifest(analysis)
 
     def test_every_analyzer_produced_ready_shape_is_manifest_renderable(self) -> None:
-        for kind in ("python", "static"):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = write_target(Path(tmp), display_name="Sensitive token words are text")
+            static = target / "liveware" / "static"
+            static.mkdir(parents=True)
+            (static / "index.html").write_text("<!doctype html>", encoding="utf-8")
+
+            analysis = self.analyzer.analyze_target(target)
+            self.assertEqual(analysis["status"], "ready")
+            payload = self.module.encode_analysis_manifest(analysis)
+            self.assertEqual(self.module.decode_analysis_manifest(payload), analysis)
+            self.module.render_setup(analysis)
+            self.assert_bash_syntax(self.module.render_start(analysis))
+
+    def test_analyzer_dynamic_candidates_are_not_renderable_without_confirmation(self) -> None:
+        for kind in ("python", "node"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
-                target = write_target(Path(tmp), display_name="Sensitive token words are text")
+                target = write_target(Path(tmp))
                 liveware = target / "liveware"
+                liveware.mkdir()
                 if kind == "python":
-                    liveware.mkdir()
                     (liveware / "server.py").write_text(
                         'DEFAULT_PORT = 5080\nROUTES = ["/healthz"]\n',
                         encoding="utf-8",
                     )
                 else:
-                    static = liveware / "static"
-                    static.mkdir(parents=True)
-                    (static / "index.html").write_text("<!doctype html>", encoding="utf-8")
+                    (liveware / "package.json").write_text(
+                        json.dumps({"scripts": {"liveware": "node server.js"}}),
+                        encoding="utf-8",
+                    )
+                    (liveware / "server.js").write_text(
+                        "const port = process.env.PORT || 4173;\nserver.listen(port);\n",
+                        encoding="utf-8",
+                    )
+                analysis = self.analyzer.analyze_target(target)
 
-                analysis = self.analyzer.analyze_target(
-                    target,
-                    which=lambda command: f"/bin/{command}",
-                )
-                self.assertEqual(analysis["status"], "ready")
-                payload = self.module.encode_analysis_manifest(analysis)
-                self.assertEqual(self.module.decode_analysis_manifest(payload), analysis)
-                self.module.render_setup(analysis)
-                self.assert_bash_syntax(self.module.render_start(analysis))
-
-    def test_analyzer_node_candidate_is_not_manifest_renderable_without_confirmation(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            target = write_target(Path(tmp))
-            liveware = target / "liveware"
-            liveware.mkdir()
-            (liveware / "package.json").write_text(
-                json.dumps({"scripts": {"liveware": "node server.js"}}),
-                encoding="utf-8",
-            )
-            (liveware / "server.js").write_text(
-                "const port = process.env.PORT || 4173;\nserver.listen(port);\n",
-                encoding="utf-8",
-            )
-            analysis = self.analyzer.analyze_target(target)
-
-        self.assertEqual(analysis["status"], "ambiguous")
-        with self.assertRaises(ValueError):
-            self.module.render_start(analysis)
+            self.assertEqual(analysis["status"], "ambiguous")
+            with self.assertRaises(ValueError):
+                self.module.render_start(analysis)
 
     def test_static_adapter_workdir_must_equal_static_dir(self) -> None:
         analysis = copy.deepcopy(READY)

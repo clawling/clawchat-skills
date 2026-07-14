@@ -237,13 +237,26 @@ class SkillContentTests(unittest.TestCase):
             "Static validation only",
             "runtime validation was not performed",
             "resolved adapter and evidence paths",
-            "never proves a ready adapter from JavaScript source",
-            "user-confirmed exact argv and default port",
-            "exact launcher names",
+            "Automatic Python and Node candidates are evidence only",
+            "user confirms the exact argv, default port",
+            "bounded action tokens",
             "service units",
             "PM2",
         ):
             self.assertIn(phrase, self.contract_text)
+
+    def test_contract_requires_confirmed_dynamic_interfaces_and_safe_lifecycle_scan(self) -> None:
+        combined = self.skill_text + "\n" + self.contract_text
+        for phrase in (
+            "Automatic Python and Node candidates are evidence only",
+            "Only a static adapter can become `ready` automatically",
+            "exact argv, default port, readiness check, lifecycle and logging ownership",
+            "root, `liveware/`, `scripts/`, and `liveware/scripts/`",
+            "Bullet and numbered-list prefixes",
+            "Symlinked lifecycle and reference paths",
+            "non-object `scripts` value",
+        ):
+            self.assertIn(phrase, combined)
 
     def test_documents_contain_no_initializer_scaffold(self) -> None:
         combined = "\n".join((self.skill_text, self.contract_text, self.ui_text))
