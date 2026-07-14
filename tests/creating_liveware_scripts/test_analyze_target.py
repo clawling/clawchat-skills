@@ -285,6 +285,56 @@ class AnalyzeTargetTests(unittest.TestCase):
             self.assertIn(signal_path, paths)
             self.assertIn(candidate_path, paths)
 
+    def test_lifecycle_does_not_hide_invalid_node_metadata_or_entrypoints(self) -> None:
+        cases = (
+            (
+                "broken-entry",
+                json.dumps({"scripts": {"liveware": "node server.js"}}),
+                lambda liveware: (liveware / "server.js").symlink_to("missing-server.js"),
+                "liveware/server.js",
+            ),
+            (
+                "malformed-package",
+                "{not-json\n",
+                lambda liveware: None,
+                "liveware/package.json",
+            ),
+            (
+                "non-object-scripts",
+                json.dumps({"scripts": []}),
+                lambda liveware: None,
+                "liveware/package.json",
+            ),
+        )
+        for name, package_text, write_entry, invalid_path in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp))
+                liveware = target / "liveware"
+                liveware.mkdir()
+                (liveware / "package.json").write_text(package_text, encoding="utf-8")
+                write_entry(liveware)
+                (target / "Dockerfile").write_text("FROM node:22\n", encoding="utf-8")
+
+                api_result = self.module.analyze_target(target)
+                completed = subprocess.run(
+                    [sys.executable, str(Path(self.module.__file__)), str(target)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+
+            self.assertEqual(api_result["status"], "blocked")
+            self.assertIsNone(api_result["adapter"])
+            paths = {item["path"] for item in api_result["evidence"]}
+            self.assertIn(invalid_path, paths)
+            self.assertIn("Dockerfile", paths)
+            self.assertEqual(completed.returncode, 2)
+            self.assertEqual(completed.stderr, "")
+            cli_result = json.loads(completed.stdout)
+            self.assertEqual(cli_result["status"], "blocked")
+            self.assertIn(invalid_path, {item["path"] for item in cli_result["evidence"]})
+            self.assertIn("Dockerfile", {item["path"] for item in cli_result["evidence"]})
+
     def test_all_supported_lifecycle_signal_shapes_block_automatic_detection(self) -> None:
         signal_writers = {
             "compose.yaml": lambda target: (target / "compose.yaml").write_text(
@@ -411,8 +461,48 @@ class AnalyzeTargetTests(unittest.TestCase):
     def test_reference_action_qualifiers_do_not_hide_later_affirmative_commands(self) -> None:
         texts = (
             "Do not run scripts/old-start-server.sh; run scripts/start-server.sh.\n",
+            "Do not run scripts/old-start-server.sh but run scripts/start-server.sh.\n",
             "For example, run scripts/example-start-server.sh. Run scripts/start-server.sh.\n",
             "Never invoke scripts/old-start-server.sh; use scripts/run-liveware.py.\n",
+        )
+        for text in texts:
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp))
+                self.write_static_candidate(target)
+                references = target / "references"
+                references.mkdir()
+                (references / "runtime.md").write_text(text, encoding="utf-8")
+                result = self.module.analyze_target(target)
+            self.assertEqual(result["status"], "ambiguous")
+            self.assertIn(
+                "references/runtime.md",
+                {item["path"] for item in result["evidence"]},
+            )
+
+    def test_common_negative_example_and_deprecated_actions_are_harmless(self) -> None:
+        texts = (
+            "Don't run scripts/start-server.sh.\n",
+            "You should not run scripts/start-server.sh.\n",
+            "Example: run scripts/start-server.sh.\n",
+            "Run scripts/start-server.sh (deprecated).\n",
+        )
+        for text in texts:
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp))
+                self.write_static_candidate(target)
+                references = target / "references"
+                references.mkdir()
+                (references / "runtime.md").write_text(text, encoding="utf-8")
+                result = self.module.analyze_target(target)
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["adapter"]["kind"], "static")
+
+    def test_negative_action_scope_ends_at_an_affirmative_clause(self) -> None:
+        texts = (
+            "Don't run scripts/old-start-server.sh, but run scripts/start-server.sh.\n",
+            "You should not run scripts/old-start-server.sh; use scripts/run-liveware.py.\n",
+            "Example: run scripts/example-start-server.sh, then run scripts/start-server.sh.\n",
+            "Run scripts/old-start-server.sh (deprecated), but run scripts/start-server.sh.\n",
         )
         for text in texts:
             with self.subTest(text=text), tempfile.TemporaryDirectory() as tmp:
@@ -444,6 +534,8 @@ class AnalyzeTargetTests(unittest.TestCase):
             "At runtime, the service is managed by systemd.\n",
             "For production, supervisor runs the service.\n",
             "During runtime, the server runs under s6.\n",
+            "In production: PM2 manages the service.\n",
+            "- At runtime: systemd owns the process.\n",
         )
         for declaration in declarations:
             with self.subTest(declaration=declaration), tempfile.TemporaryDirectory() as tmp:

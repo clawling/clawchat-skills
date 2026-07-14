@@ -64,18 +64,20 @@ REFERENCE_SCRIPT_HARMLESS_RE = re.compile(
     re.IGNORECASE,
 )
 REFERENCE_LEADING_QUALIFIER_RE = re.compile(
-    r"^(?:(?:in|for)[ \t]+production|(?:at|during)[ \t]+runtime),[ \t]+",
+    r"^(?:(?:in|for)[ \t]+production|(?:at|during)[ \t]+runtime)[,:][ \t]+",
     re.IGNORECASE,
 )
 REFERENCE_ACTION_NEGATION_RE = re.compile(
-    r"\b(?:for[ \t]+example|as[ \t]+an?[ \t]+example|do[ \t]+not|never|"
-    r"obsolete|deprecated)\b",
+    r"(?:\b(?:for[ \t]+example|as[ \t]+an?[ \t]+example|example(?=[ \t]*:)|"
+    r"do[ \t]+not|should[ \t]+not|not|never|obsolete|deprecated)\b|"
+    r"\bdon['’]t\b)",
     re.IGNORECASE,
 )
 REFERENCE_ACTION_OBSOLETE_RE = re.compile(
-    r"^[ \t]+(?:is[ \t]+)?(?:obsolete|deprecated)\b",
+    r"^[ \t]*(?:\([ \t]*)?(?:is[ \t]+)?(?:obsolete|deprecated)\b",
     re.IGNORECASE,
 )
+REFERENCE_ACTION_BOUNDARY_RE = re.compile(r",|\b(?:but|then)\b", re.IGNORECASE)
 
 
 def reference_declares_lifecycle(text: str) -> bool:
@@ -93,16 +95,22 @@ def reference_declares_lifecycle(text: str) -> bool:
             return True
         for match in REFERENCE_SCRIPT_ACTION_RE.finditer(statement):
             before = statement[: match.start()].strip()
-            local_prefix = before.rsplit(",", 1)[-1].strip()
             previous_action = REFERENCE_SCRIPT_ACTION_RE.search(statement, 0, match.start())
-            qualifier_context = local_prefix if previous_action is not None else before
+            qualifier_context = before
+            if previous_action is not None:
+                boundaries = list(REFERENCE_ACTION_BOUNDARY_RE.finditer(before))
+                if boundaries:
+                    qualifier_context = before[boundaries[-1].end() :].strip()
             action_is_qualified = (
                 REFERENCE_ACTION_NEGATION_RE.search(qualifier_context) is not None
                 or REFERENCE_ACTION_OBSOLETE_RE.match(statement[match.end() :]) is not None
             )
             if (
                 lifecycle_script_name(Path(match.group(1)))
-                and REFERENCE_SCRIPT_HARMLESS_RE.search(statement) is None
+                and (
+                    previous_action is not None
+                    or REFERENCE_SCRIPT_HARMLESS_RE.search(statement) is None
+                )
                 and not action_is_qualified
             ):
                 return True
@@ -441,6 +449,71 @@ def reject_escaping_candidate(
     return True
 
 
+def inspect_node_package(
+    result: dict[str, object],
+    target: Path,
+    package_file: Path,
+) -> tuple[bool, str, Path | None]:
+    package_source = read_analysis_text(result, target, package_file, "Node package metadata")
+    if package_source is None:
+        return False, "", None
+    try:
+        package = json.loads(package_source)
+    except json.JSONDecodeError:
+        record_path_issue(
+            result,
+            target,
+            package_file,
+            f"Invalid JSON: {package_file.relative_to(target)}",
+            "Invalid Node package metadata",
+        )
+        return False, "", None
+    if not isinstance(package, dict):
+        record_path_issue(
+            result,
+            target,
+            package_file,
+            f"Package metadata must be a JSON object: {package_file.relative_to(target)}",
+            "Node package metadata must be an object",
+        )
+        return False, "", None
+    scripts = package.get("scripts", {})
+    if not isinstance(scripts, dict):
+        record_path_issue(
+            result,
+            target,
+            package_file,
+            f"Package scripts must be a JSON object: {package_file.relative_to(target)}",
+            "Node package scripts must be an object",
+        )
+        return False, "", None
+    script_name = (
+        "liveware"
+        if isinstance(scripts.get("liveware"), str)
+        else "start"
+        if isinstance(scripts.get("start"), str)
+        else ""
+    )
+    if not script_name:
+        return True, "", None
+    script = scripts[script_name]
+    assert isinstance(script, str)
+    entry_match = re.search(r"(?:^|\s)([^\s]+\.(?:mjs|cjs|js))(?:\s|$)", script)
+    entry_file = package_file.parent / entry_match.group(1) if entry_match else None
+    if entry_file is not None and reject_escaping_candidate(
+        result,
+        target,
+        entry_file,
+        "Node server entrypoint",
+    ):
+        return False, script_name, entry_file
+    if entry_file is not None and entry_file.is_file():
+        entry_source = read_analysis_text(result, target, entry_file, "Node server entrypoint")
+        if entry_source is None:
+            return False, script_name, entry_file
+    return True, script_name, entry_file
+
+
 def analyze_target(target_root: Path) -> dict[str, object]:
     try:
         target = target_root.expanduser().resolve()
@@ -552,14 +625,20 @@ def analyze_target(target_root: Path) -> dict[str, object]:
         issues.append("Lifecycle evidence could not be read or enumerated safely")
         return result
     if found_signals:
-        result["status"] = "ambiguous"
         for path in found_signals:
-            evidence.append(
-                {
-                    "path": str(path.relative_to(target)),
-                    "reason": "Existing server or service lifecycle declaration",
-                }
-            )
+            item = {
+                "path": str(path.relative_to(target)),
+                "reason": "Existing server or service lifecycle declaration",
+            }
+            if item not in evidence:
+                evidence.append(item)
+        for package_file in package_files:
+            if not package_file.is_file():
+                continue
+            valid, _, _ = inspect_node_package(result, target, package_file)
+            if not valid:
+                return result
+        result["status"] = "ambiguous"
         candidate_evidence = automatic_candidate_evidence(
             target,
             python_server,
@@ -601,57 +680,12 @@ def analyze_target(target_root: Path) -> dict[str, object]:
     for package_file in package_files:
         if not package_file.is_file():
             continue
-        package_source = read_analysis_text(result, target, package_file, "Node package metadata")
-        if package_source is None:
+        valid, script_name, entry_file = inspect_node_package(result, target, package_file)
+        if not valid:
             return result
-        try:
-            package = json.loads(package_source)
-        except json.JSONDecodeError:
-            result["status"] = "blocked"
-            issues.append(f"Invalid JSON: {package_file.relative_to(target)}")
-            return result
-        if not isinstance(package, dict):
-            result["status"] = "blocked"
-            evidence.append(
-                {
-                    "path": str(package_file.relative_to(target)),
-                    "reason": "Node package metadata must be an object",
-                }
-            )
-            issues.append(f"Package metadata must be a JSON object: {package_file.relative_to(target)}")
-            return result
-        scripts = package.get("scripts", {})
-        if not isinstance(scripts, dict):
-            result["status"] = "blocked"
-            evidence.append(
-                {
-                    "path": str(package_file.relative_to(target)),
-                    "reason": "Node package scripts must be an object",
-                }
-            )
-            issues.append(
-                f"Package scripts must be a JSON object: {package_file.relative_to(target)}"
-            )
-            return result
-        script_name = "liveware" if isinstance(scripts.get("liveware"), str) else "start" if isinstance(scripts.get("start"), str) else ""
         if not script_name:
             evidence.append({"path": str(package_file.relative_to(target)), "reason": "Package metadata without a Liveware or start script"})
             continue
-        script = scripts[script_name]
-        assert isinstance(script, str)
-        entry_match = re.search(r"(?:^|\s)([^\s]+\.(?:mjs|cjs|js))(?:\s|$)", script)
-        entry_file = package_file.parent / entry_match.group(1) if entry_match else None
-        if entry_file is not None and reject_escaping_candidate(
-            result,
-            target,
-            entry_file,
-            "Node server entrypoint",
-        ):
-            return result
-        if entry_file and entry_file.is_file():
-            entry_source = read_analysis_text(result, target, entry_file, "Node server entrypoint")
-            if entry_source is None:
-                return result
         result["status"] = "ambiguous"
         evidence.append(
             {
