@@ -702,6 +702,46 @@ printf '%s\\n' 'killall server; pip install package; ${API_TOKEN}'
         payload = json.loads(cli.stdout)
         self.assertTrue({"LW001", "LW005"} <= {item["code"] for item in payload})
 
+    def test_canonical_pair_stops_validating_after_adapter_path_escapes(self) -> None:
+        cases = ("workdir", "static-dir", "evidence")
+        for kind in cases:
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                target = write_target(root)
+                outside = root / "outside"
+                outside.mkdir()
+                analysis = self.analysis(target, "managed-command")
+                analysis["static_dir"] = None
+                if kind == "workdir":
+                    analysis["adapter"]["workdir"] = "service"
+                    checked = target / "service"
+                    checked.mkdir()
+                elif kind == "static-dir":
+                    analysis = self.analysis(target, "static")
+                    analysis["adapter"]["workdir"] = "public"
+                    analysis["static_dir"] = "public"
+                    checked = target / "public"
+                    checked.mkdir()
+                else:
+                    analysis["evidence"] = [
+                        {"path": "proof.js", "reason": "Confirmed server evidence"}
+                    ]
+                    checked = target / "proof.js"
+                    checked.write_text("server proof\n", encoding="utf-8")
+
+                setup, start = self.generated(analysis)
+                self.write_scripts(target, setup, start)
+                if checked.is_dir():
+                    checked.rmdir()
+                    checked.symlink_to(outside, target_is_directory=True)
+                else:
+                    checked.unlink()
+                    checked.symlink_to(outside / checked.name)
+
+                findings = self.validator.validate_target(target, analysis=analysis)
+
+            self.assertTrue({"LW018", "LW019"} <= self.codes(findings))
+
 
 if __name__ == "__main__":
     unittest.main()

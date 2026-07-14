@@ -109,7 +109,7 @@ def require_ready(analysis: dict[str, object]) -> None:
         item = require_exact_properties(item, EVIDENCE_PROPERTIES, "Analysis evidence item")
         if not isinstance(item["path"], str) or not isinstance(item["reason"], str):
             raise ValueError("Analysis evidence path and reason must be strings.")
-        require_target_relative_path(item["path"], "Analysis evidence path")
+        require_resolved_target_path(analysis, item["path"], "Analysis evidence path")
     validate_adapter(analysis)
 
 
@@ -320,6 +320,25 @@ def require_target_relative_path(value: object, label: str) -> str:
     return text
 
 
+def require_resolved_target_path(
+    analysis: dict[str, object],
+    value: object,
+    label: str,
+) -> str:
+    text = require_target_relative_path(value, label)
+    target_root = analysis.get("target_root")
+    if not isinstance(target_root, str):
+        raise ValueError("Analysis target_root must be a non-empty string.")
+    try:
+        resolved_root = Path(target_root).resolve(strict=False)
+        resolved_path = (Path(target_root) / text).resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"{label} could not be resolved safely.") from exc
+    if not path_is_within(resolved_path, resolved_root):
+        raise ValueError(f"{label} would escape outside the target root.")
+    return text
+
+
 def shell_double_data(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
 
@@ -382,7 +401,7 @@ def validate_adapter(analysis: dict[str, object]) -> dict[str, object]:
     kind = adapter["kind"]
     if kind not in {"managed-command", "existing-launcher", "external", "static"}:
         raise ValueError("Analysis adapter kind is not renderable.")
-    workdir = require_target_relative_path(adapter["workdir"], "Adapter workdir")
+    workdir = require_resolved_target_path(analysis, adapter["workdir"], "Adapter workdir")
     command = adapter["command"]
     if type(command) is not list or not all(isinstance(item, str) for item in command):
         raise ValueError("Adapter command must be an argv list.")
@@ -415,14 +434,14 @@ def validate_adapter(analysis: dict[str, object]) -> dict[str, object]:
             raise ValueError("Static adapters must not define commands, a port, or readiness.")
         if owner != "target" or log_path is not None:
             raise ValueError("Static adapters must retain target log ownership.")
-        static_dir = require_target_relative_path(analysis["static_dir"], "Static directory")
+        static_dir = require_resolved_target_path(analysis, analysis["static_dir"], "Static directory")
         if workdir != static_dir:
             raise ValueError("Static adapter workdir must equal static_dir.")
         return adapter
 
     static_dir = analysis["static_dir"]
     if static_dir is not None:
-        require_target_relative_path(static_dir, "Dynamic static directory")
+        require_resolved_target_path(analysis, static_dir, "Dynamic static directory")
     port = adapter["default_port"]
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("Dynamic adapter requires a valid default port.")

@@ -362,7 +362,7 @@ class RenderSetupTests(unittest.TestCase):
                     self.module.encode_analysis_manifest(analysis)
 
     def test_every_analyzer_produced_ready_shape_is_manifest_renderable(self) -> None:
-        for kind in ("python", "node", "static"):
+        for kind in ("python", "static"):
             with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
                 target = write_target(Path(tmp), display_name="Sensitive token words are text")
                 liveware = target / "liveware"
@@ -370,16 +370,6 @@ class RenderSetupTests(unittest.TestCase):
                     liveware.mkdir()
                     (liveware / "server.py").write_text(
                         'DEFAULT_PORT = 5080\nROUTES = ["/healthz"]\n',
-                        encoding="utf-8",
-                    )
-                elif kind == "node":
-                    liveware.mkdir()
-                    (liveware / "package.json").write_text(
-                        json.dumps({"scripts": {"liveware": "node server.js"}}),
-                        encoding="utf-8",
-                    )
-                    (liveware / "server.js").write_text(
-                        'const port = process.env.PORT || 4173;\n',
                         encoding="utf-8",
                     )
                 else:
@@ -396,6 +386,25 @@ class RenderSetupTests(unittest.TestCase):
                 self.assertEqual(self.module.decode_analysis_manifest(payload), analysis)
                 self.module.render_setup(analysis)
                 self.assert_bash_syntax(self.module.render_start(analysis))
+
+    def test_analyzer_node_candidate_is_not_manifest_renderable_without_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = write_target(Path(tmp))
+            liveware = target / "liveware"
+            liveware.mkdir()
+            (liveware / "package.json").write_text(
+                json.dumps({"scripts": {"liveware": "node server.js"}}),
+                encoding="utf-8",
+            )
+            (liveware / "server.js").write_text(
+                "const port = process.env.PORT || 4173;\nserver.listen(port);\n",
+                encoding="utf-8",
+            )
+            analysis = self.analyzer.analyze_target(target)
+
+        self.assertEqual(analysis["status"], "ambiguous")
+        with self.assertRaises(ValueError):
+            self.module.render_start(analysis)
 
     def test_static_adapter_workdir_must_equal_static_dir(self) -> None:
         analysis = copy.deepcopy(READY)
@@ -1344,6 +1353,73 @@ class RenderSetupTests(unittest.TestCase):
                         check=False,
                     )
                     self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_resolved_adapter_and_evidence_paths_must_stay_inside_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = write_target(root)
+            outside = root / "outside"
+            outside.mkdir()
+
+            unsafe_workdir = copy.deepcopy(READY)
+            unsafe_workdir["target_root"] = str(target.resolve())
+            unsafe_workdir["adapter"]["workdir"] = "service"
+            (target / "service").symlink_to(outside, target_is_directory=True)
+
+            unsafe_static = copy.deepcopy(READY)
+            unsafe_static["target_root"] = str(target.resolve())
+            unsafe_static["adapter"] = {
+                "kind": "static",
+                "workdir": "public",
+                "command": [],
+                "required_commands": [],
+                "default_port": None,
+                "readiness": None,
+                "log": {"owner": "target", "path": None},
+            }
+            unsafe_static["static_dir"] = "public"
+            (target / "public").symlink_to(outside, target_is_directory=True)
+
+            unsafe_evidence = copy.deepcopy(READY)
+            unsafe_evidence["target_root"] = str(target.resolve())
+            unsafe_evidence["static_dir"] = None
+            unsafe_evidence["evidence"] = [
+                {"path": "proof.js", "reason": "User-confirmed server evidence"}
+            ]
+            (target / "proof.js").symlink_to(outside / "proof.js")
+
+            for name, analysis in {
+                "workdir": unsafe_workdir,
+                "static-dir": unsafe_static,
+                "evidence": unsafe_evidence,
+            }.items():
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(ValueError, "outside the target"):
+                        self.module.render_start(analysis)
+                    with self.assertRaisesRegex(ValueError, "outside the target"):
+                        self.module.render_setup(analysis)
+
+    def test_resolved_paths_inside_target_remain_renderable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = write_target(Path(tmp))
+            real = target / "service-real"
+            real.mkdir()
+            (target / "service-link").symlink_to(real, target_is_directory=True)
+            proof = real / "server.py"
+            proof.write_text("DEFAULT_PORT = 5080\n", encoding="utf-8")
+            analysis = copy.deepcopy(READY)
+            analysis["target_root"] = str(target.resolve())
+            analysis["adapter"]["workdir"] = "service-link"
+            analysis["static_dir"] = None
+            analysis["evidence"] = [
+                {"path": "service-real/server.py", "reason": "Confirmed server evidence"}
+            ]
+
+            setup = self.module.render_setup(analysis)
+            start = self.module.render_start(analysis)
+
+        self.assertIn("# LIVEWARE ANALYSIS V1: ", setup)
+        self.assertIn('cd -- "$SKILL_ROOT/service-link"', start)
 
 
 if __name__ == "__main__":

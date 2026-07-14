@@ -236,6 +236,12 @@ class SkillContentTests(unittest.TestCase):
             "shell=True",
             "Static validation only",
             "runtime validation was not performed",
+            "resolved adapter and evidence paths",
+            "never proves a ready adapter from JavaScript source",
+            "user-confirmed exact argv and default port",
+            "exact launcher names",
+            "service units",
+            "PM2",
         ):
             self.assertIn(phrase, self.contract_text)
 

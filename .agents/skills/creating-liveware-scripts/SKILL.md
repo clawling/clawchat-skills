@@ -39,7 +39,7 @@ PYTHONPYCACHEPREFIX="$ANALYSIS_DIR/pycache" python3 -B -m py_compile "$TARGET/li
 bash -n "$TARGET/liveware/scripts/start.sh"
 ```
 
-Review the complete output and actual diff. Report static results and unresolved runtime requirements.
+Report static results and unresolved runtime requirements.
 
 ## Quick Reference
 
@@ -52,7 +52,7 @@ Review the complete output and actual diff. Report static results and unresolved
 
 ## Example
 
-For an externally managed Node service documented at port `4173`, use an `external` adapter with no command, target-owned logging, and exact readiness `http://127.0.0.1:{port}/healthz`. Launch nothing; wait, then bind loopback. Do not change its lifecycle or logging.
+For a confirmed externally managed Node service at port `4173`, use an `external` adapter with no command, target-owned logging, and exact readiness `http://127.0.0.1:{port}/healthz`. Launch nothing; wait, then bind loopback. Do not change its lifecycle or logging.
 
 ## Repair Rules
 
@@ -63,7 +63,7 @@ For an externally managed Node service documented at port `4173`, use an `extern
 
 ## Safety Boundary
 
-Do not install, download, delete apps, kill unknown processes, read credentials, or use `shell=True`. Do not run generated setup.py or start.sh without a real user-provided environment and authorization. Never claim fake runtime success. Report that runtime validation was not performed.
+Do not install, download, delete apps, kill unknown processes, read credentials, or use `shell=True`. Reject path escapes; keep automatic Node candidates ambiguous. Do not run generated setup.py or start.sh without a real user-provided environment and authorization. Never claim fake runtime success. Report that runtime validation was not performed.
 
 ## Red Flags
 
