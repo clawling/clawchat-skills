@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.creating_liveware_scripts.helpers import load_skill_script
+from tests.creating_liveware_scripts.helpers import load_skill_script, write_target
 
 
 READY = {
@@ -40,6 +40,7 @@ class RenderSetupTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.module = load_skill_script("render_scripts")
+        cls.analyzer = load_skill_script("analyze_target")
 
     def assert_bash_syntax(self, text: str) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -164,8 +165,8 @@ class RenderSetupTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.module.extract_analysis_manifest(f"{marker}\n{marker}\n")
 
-    def test_manifest_encoder_rejects_direct_credentials(self) -> None:
-        for key in (
+    def test_manifest_schema_rejects_every_unknown_top_level_property_uniformly(self) -> None:
+        prior_credential_reports = (
             "token",
             "accessToken",
             "password",
@@ -221,17 +222,8 @@ class RenderSetupTests(unittest.TestCase):
             "accessKeys2",
             "apikeys3",
             "privatekeys4",
-        ):
-            with self.subTest(key=key):
-                with self.assertRaisesRegex(ValueError, "credential"):
-                    self.module.encode_analysis_manifest({**READY, key: "do-not-embed"})
-
-        nested = copy.deepcopy(READY)
-        nested["evidence"] = ({"clientSecret": "do-not-embed"},)
-        with self.assertRaisesRegex(ValueError, "credential"):
-            self.module.encode_analysis_manifest(nested)
-
-        for key in (
+        )
+        benign_extensions = (
             "author",
             "authority",
             "tokenizer",
@@ -239,57 +231,163 @@ class RenderSetupTests(unittest.TestCase):
             "secretary",
             "secretariat",
             "privateKeyboard",
-        ):
-            with self.subTest(safe_key=key):
-                safe = copy.deepcopy(READY)
-                safe["evidence"] = [{key: "benign metadata"}]
-                self.assertEqual(
-                    self.module.decode_analysis_manifest(
-                        self.module.encode_analysis_manifest(safe)
-                    ),
-                    safe,
-                )
-
-    def test_manifest_encoder_rejects_recursive_credential_variants(self) -> None:
-        for key in (
-            "tokens",
-            "secret2",
-            "clientCredentials",
-            "apiSecrets",
-            "accessKeys",
-            "authorizationcode",
-        ):
+            "metadata",
+        )
+        for key in prior_credential_reports + benign_extensions:
             with self.subTest(key=key):
-                nested = copy.deepcopy(READY)
-                nested["evidence"] = [{"metadata": [{key: "do-not-embed"}]}]
-                with self.assertRaisesRegex(ValueError, "credential"):
-                    self.module.encode_analysis_manifest(nested)
+                with self.assertRaisesRegex(ValueError, "schema|additional|property"):
+                    self.module.encode_analysis_manifest({**READY, key: "do-not-embed"})
 
-    def test_manifest_identity_is_type_exact_for_nested_json_values(self) -> None:
-        integer = copy.deepcopy(READY)
-        integer["evidence"] = [{"value": 1}]
-        floating = copy.deepcopy(READY)
-        floating["evidence"] = [{"value": 1.0}]
-        boolean = copy.deepcopy(READY)
-        boolean["evidence"] = [{"value": True}]
+    def test_manifest_schema_allows_sensitive_words_only_as_allowed_text_values(self) -> None:
+        analysis = copy.deepcopy(READY)
+        words = (
+            "token password secret credential api_key accessToken author authority "
+            "tokenizer secretary privateKeyboard"
+        )
+        analysis["display_name"] = words
+        analysis["evidence"] = [{"path": "SKILL.md", "reason": words}]
 
-        self.assertNotEqual(
-            self.module.encode_analysis_manifest(integer),
-            self.module.encode_analysis_manifest(floating),
+        payload = self.module.encode_analysis_manifest(analysis)
+
+        self.assertEqual(self.module.decode_analysis_manifest(payload), analysis)
+
+    def test_manifest_schema_requires_every_analyzer_top_level_property(self) -> None:
+        required = {
+            "schema_version",
+            "status",
+            "target_root",
+            "skill_name",
+            "adapter",
+            "static_dir",
+            "evidence",
+            "issues",
+        }
+        for key in required:
+            with self.subTest(key=key):
+                analysis = copy.deepcopy(READY)
+                del analysis[key]
+                with self.assertRaisesRegex(ValueError, "schema|required|property"):
+                    self.module.encode_analysis_manifest(analysis)
+
+        without_display_name = copy.deepcopy(READY)
+        del without_display_name["display_name"]
+        self.assertEqual(
+            self.module.decode_analysis_manifest(
+                self.module.encode_analysis_manifest(without_display_name)
+            ),
+            without_display_name,
         )
-        self.assertNotEqual(
-            self.module.encode_analysis_manifest(integer),
-            self.module.encode_analysis_manifest(boolean),
+
+    def test_manifest_schema_requires_exact_adapter_readiness_and_log_properties(self) -> None:
+        object_cases: list[tuple[str, tuple[str, ...], str]] = []
+        for key in (
+            "kind",
+            "workdir",
+            "command",
+            "required_commands",
+            "default_port",
+            "readiness",
+            "log",
+        ):
+            object_cases.append(("adapter-missing", ("adapter", key), "missing"))
+        object_cases.append(("adapter-extra", ("adapter", "extension"), "extra"))
+        for key in ("kind", "url"):
+            object_cases.append(("readiness-missing", ("adapter", "readiness", key), "missing"))
+        object_cases.append(("readiness-extra", ("adapter", "readiness", "extension"), "extra"))
+        for key in ("owner", "path"):
+            object_cases.append(("log-missing", ("adapter", "log", key), "missing"))
+        object_cases.append(("log-extra", ("adapter", "log", "extension"), "extra"))
+
+        for layer, path, mutation in object_cases:
+            with self.subTest(layer=layer, path=path):
+                analysis = copy.deepcopy(READY)
+                parent: dict[str, object] = analysis
+                for key in path[:-1]:
+                    child = parent[key]
+                    self.assertIsInstance(child, dict)
+                    parent = child
+                if mutation == "missing":
+                    del parent[path[-1]]
+                else:
+                    parent[path[-1]] = "not allowed"
+                with self.assertRaisesRegex(ValueError, "schema|required|additional|property"):
+                    self.module.encode_analysis_manifest(analysis)
+
+    def test_manifest_schema_requires_exact_evidence_objects(self) -> None:
+        valid = copy.deepcopy(READY)
+        valid["evidence"] = [{"path": "SKILL.md", "reason": "Stable skill identity"}]
+        self.assertEqual(
+            self.module.decode_analysis_manifest(self.module.encode_analysis_manifest(valid)),
+            valid,
         )
-        existing = self.module.render_start(integer)
-        with self.assertRaisesRegex(ValueError, "manifest.*current analysis"):
-            self.module.render_start(floating, existing=existing)
-        with self.assertRaisesRegex(ValueError, "manifest pair.*current analysis"):
-            self.module.validate_existing_manifest_pair(
-                self.module.render_setup(integer),
-                existing,
-                floating,
-            )
+
+        cases = {
+            "not-list": {"path": "SKILL.md", "reason": "identity"},
+            "not-object": ["SKILL.md"],
+            "missing-path": [{"reason": "identity"}],
+            "missing-reason": [{"path": "SKILL.md"}],
+            "extra": [{"path": "SKILL.md", "reason": "identity", "source": "agent"}],
+            "path-not-string": [{"path": 1, "reason": "identity"}],
+            "reason-not-string": [{"path": "SKILL.md", "reason": True}],
+        }
+        for name, evidence in cases.items():
+            with self.subTest(name=name):
+                analysis = copy.deepcopy(READY)
+                analysis["evidence"] = evidence
+                with self.assertRaisesRegex(ValueError, "evidence|schema|required|additional|property"):
+                    self.module.encode_analysis_manifest(analysis)
+
+    def test_manifest_schema_enforces_exact_numeric_types_on_schema_fields(self) -> None:
+        for field, value in (
+            ("schema_version", True),
+            ("schema_version", 1.0),
+            ("default_port", True),
+            ("default_port", 5080.0),
+        ):
+            with self.subTest(field=field, value=value):
+                analysis = copy.deepcopy(READY)
+                if field == "schema_version":
+                    analysis[field] = value
+                else:
+                    analysis["adapter"][field] = value
+                with self.assertRaises(ValueError):
+                    self.module.encode_analysis_manifest(analysis)
+
+    def test_every_analyzer_produced_ready_shape_is_manifest_renderable(self) -> None:
+        for kind in ("python", "node", "static"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                target = write_target(Path(tmp), display_name="Sensitive token words are text")
+                liveware = target / "liveware"
+                if kind == "python":
+                    liveware.mkdir()
+                    (liveware / "server.py").write_text(
+                        'DEFAULT_PORT = 5080\nROUTES = ["/healthz"]\n',
+                        encoding="utf-8",
+                    )
+                elif kind == "node":
+                    liveware.mkdir()
+                    (liveware / "package.json").write_text(
+                        json.dumps({"scripts": {"liveware": "node server.js"}}),
+                        encoding="utf-8",
+                    )
+                    (liveware / "server.js").write_text(
+                        'const port = process.env.PORT || 4173;\n',
+                        encoding="utf-8",
+                    )
+                else:
+                    static = liveware / "static"
+                    static.mkdir(parents=True)
+                    (static / "index.html").write_text("<!doctype html>", encoding="utf-8")
+
+                analysis = self.analyzer.analyze_target(
+                    target,
+                    which=lambda command: f"/bin/{command}",
+                )
+                self.assertEqual(analysis["status"], "ready")
+                payload = self.module.encode_analysis_manifest(analysis)
+                self.assertEqual(self.module.decode_analysis_manifest(payload), analysis)
+                self.module.render_setup(analysis)
+                self.assert_bash_syntax(self.module.render_start(analysis))
 
     def test_setup_rejects_non_ready_or_unresolved_analysis(self) -> None:
         cases = (

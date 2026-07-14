@@ -202,34 +202,94 @@ test -f "$STATE_FILE"
             {(item.code, item.path, item.message) for item in findings},
         )
 
-    def test_manifest_and_explicit_analysis_identity_are_type_exact(self) -> None:
+    def test_schema_numeric_types_are_rejected_as_explicit_analysis(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            integer = self.analysis(Path(tmp))
-            integer["evidence"] = [{"value": 1}]
-            floating = copy.deepcopy(integer)
-            floating["evidence"] = [{"value": 1.0}]
-            setup = self.renderer.render_setup(integer)
-            start = self.renderer.render_start(floating)
+            analysis = self.analysis(Path(tmp), "managed-command")
+            setup, start = self.generated(analysis)
 
-        pair_codes = self.codes(self.validator.validate_texts(setup, start))
-        self.assertTrue({"LW018", "LW019"} <= pair_codes)
+        for field, value in (
+            ("schema_version", True),
+            ("schema_version", 1.0),
+            ("default_port", True),
+            ("default_port", 6000.0),
+        ):
+            with self.subTest(field=field, value=value):
+                invalid = copy.deepcopy(analysis)
+                if field == "schema_version":
+                    invalid[field] = value
+                else:
+                    invalid["adapter"][field] = value
+                findings = self.validator.validate_texts(setup, start, analysis=invalid)
+                self.assertIn(
+                    (
+                        "LW018",
+                        "analysis.json",
+                        "Resolved schema-version-1 analysis with no issues is required.",
+                    ),
+                    {(item.code, item.path, item.message) for item in findings},
+                )
 
-        integer_setup, integer_start = self.generated(integer)
-        explicit_codes = self.codes(
-            self.validator.validate_texts(integer_setup, integer_start, analysis=floating)
-        )
-        self.assertTrue({"LW018", "LW019"} <= explicit_codes)
+    def test_schema_invalid_manifests_map_to_both_script_contract_codes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp), "managed-command")
+            setup, start = self.generated(analysis)
+        original = self.renderer.encode_analysis_manifest(analysis)
 
-        boolean_schema = {**integer, "schema_version": True}
-        findings = self.validator.validate_texts(
-            integer_setup,
-            integer_start,
-            analysis=boolean_schema,
-        )
-        self.assertIn(
-            ("LW018", "analysis.json", "Resolved schema-version-1 analysis with no issues is required."),
-            {(item.code, item.path, item.message) for item in findings},
-        )
+        invalid_cases: dict[str, dict[str, object]] = {}
+        top_extra = copy.deepcopy(analysis)
+        top_extra["clientSecret"] = "never embed"
+        invalid_cases["top-extra-credential"] = top_extra
+        top_benign = copy.deepcopy(analysis)
+        top_benign["author"] = "also not analyzer schema"
+        invalid_cases["top-extra-benign"] = top_benign
+        adapter_extra = copy.deepcopy(analysis)
+        adapter_extra["adapter"]["extension"] = "no"
+        invalid_cases["adapter-extra"] = adapter_extra
+        readiness_extra = copy.deepcopy(analysis)
+        readiness_extra["adapter"]["readiness"]["extension"] = "no"
+        invalid_cases["readiness-extra"] = readiness_extra
+        log_extra = copy.deepcopy(analysis)
+        log_extra["adapter"]["log"]["extension"] = "no"
+        invalid_cases["log-extra"] = log_extra
+        evidence_extra = copy.deepcopy(analysis)
+        evidence_extra["evidence"] = [
+            {"path": "SKILL.md", "reason": "text may say token or password", "extension": "no"}
+        ]
+        invalid_cases["evidence-extra"] = evidence_extra
+
+        for name, invalid in invalid_cases.items():
+            with self.subTest(name=name):
+                payload = base64.urlsafe_b64encode(
+                    json.dumps(
+                        invalid,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).decode("ascii")
+                invalid_setup = setup.replace(original, payload, 1)
+                invalid_start = start.replace(original, payload, 1)
+                codes = self.codes(self.validator.validate_texts(invalid_setup, invalid_start))
+                self.assertTrue({"LW018", "LW019"} <= codes)
+
+    def test_schema_invalid_explicit_analysis_is_an_analysis_finding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            analysis = self.analysis(Path(tmp))
+            setup, start = self.generated(analysis)
+
+        for key in ("clientSecret", "author"):
+            with self.subTest(key=key):
+                invalid = copy.deepcopy(analysis)
+                invalid[key] = "not analyzer schema"
+                findings = self.validator.validate_texts(setup, start, analysis=invalid)
+                self.assertIn(
+                    (
+                        "LW018",
+                        "analysis.json",
+                        "Resolved schema-version-1 analysis with no issues is required.",
+                    ),
+                    {(item.code, item.path, item.message) for item in findings},
+                )
 
     def test_target_root_mismatch_is_an_analysis_finding(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

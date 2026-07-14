@@ -21,7 +21,7 @@
 - Treat ambiguous entrypoints, ports, lifecycle ownership, readiness checks, or logging ownership as blocking questions; never guess.
 - Without a real user-provided Hermes/ClawChat/Liveware environment, run static checks only. Do not run generated setup/start scripts and do not create fake plugins, CLIs, servers, or successful runtime simulations.
 - Use `name` for `liveware app create`, state filenames, and identity. Use `display_name`, falling back to `name`, only for ClawChat registration.
-- Embed the same deterministic URL-safe Base64 schema-version-1 analysis manifest comment in setup.py and start.sh. The manifest contains no credentials and is the canonical static-validation trust root.
+- Embed the same deterministic URL-safe Base64 schema-version-1 analysis manifest comment in setup.py and start.sh. Accept only the closed `analyze_target.py` schema with no additional properties at any object level. The generator never reads credentials, so credential fields cannot be embedded; ordinary words in allowed display/evidence text are not scanned.
 
 ## File Map
 
@@ -537,6 +537,8 @@ git commit -m "feat: analyze liveware script targets"
 - Canonicalize the full ready analysis as UTF-8 JSON with sorted keys and compact separators, then encode it with URL-safe Base64.
 - Add exactly one `# LIVEWARE ANALYSIS V1: <payload>` comment to generated setup.py without executing or trusting target code.
 - Expose focused encode/decode/extract helpers for start rendering and validation. Reject malformed, duplicate, non-object, non-version-1, non-ready, or issue-bearing manifests.
+- Validate the closed analyzer schema before encoding or rendering. Require all analyzer top-level properties except optional `display_name`; reject every additional property uniformly instead of classifying credential-like names.
+- Require the exact adapter properties `kind`, `workdir`, `command`, `required_commands`, `default_port`, `readiness`, and `log`; exact dynamic readiness `{kind, url}`; exact log `{owner, path}`; and evidence as a list of exact string-valued `{path, reason}` objects. Enforce adapter/static-dir semantics and exact integer types for `schema_version` and dynamic `default_port`.
 
 - [ ] **Step 1: Write failing setup-render tests**
 
@@ -1356,6 +1358,13 @@ git commit -m "feat: render liveware start adapters"
 - Missing, duplicate, malformed, non-object, non-ready, issue-bearing, mismatched, or tampered manifests/scripts must produce deterministic `LW018`/`LW019` findings and can never return zero findings.
 - Keep concise legacy diagnostics for Tarot/Office and obvious unsafe patterns, but do not attempt to prove arbitrary Python/Bash safety with a hand-built interpreter. A legacy script without a valid canonical manifest fails the contract gate even if no specific heuristic fires.
 - Add RED-first tests for Unicode round trips, all adapter kinds, manifest duplication/corruption/mismatch, fake manifests on unsafe bodies, setup/start tampering, explicit-analysis mismatch, canonical repair rejection, legacy diagnostics, and JSON CLI behavior.
+
+**Strict analyzer-schema hardening amendment:**
+
+- Treat `analyze_target.py` as the only allowed manifest schema. Require all analyzer top-level fields except optional `display_name`, and reject all unknown properties at the top level, adapter, readiness, log, and evidence-item levels.
+- Remove credential-name classification. Credential-looking and benign extension keys fail identically as unknown schema properties. Preserve arbitrary text values, including sensitive-looking words, in allowed `display_name` and evidence `reason` fields.
+- Require exact JSON value types, including integer (not boolean or float) `schema_version` and dynamic `default_port`, exact adapter properties and kind semantics, dynamic `{kind, url}` readiness or static `null`, exact `{owner, path}` log, present `static_dir`, and exact string-valued `{path, reason}` evidence items.
+- Map schema-invalid embedded manifests and schema-invalid explicit analysis deterministically to `LW018`/`LW019`; they can never produce a zero-finding result. Cover analyzer-produced ready output and every supported user-confirmed adapter kind without executing generated scripts or runtime services.
 
 - [ ] **Step 1: Write failing validator tests**
 

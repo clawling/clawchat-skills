@@ -16,17 +16,68 @@ SKILL_ROOT = Path(__file__).resolve().parent.parent
 ASSET_ROOT = SKILL_ROOT / "assets"
 ANALYSIS_MARKER_PREFIX = "# LIVEWARE ANALYSIS V1: "
 SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
+TOP_LEVEL_REQUIRED = frozenset(
+    {
+        "schema_version",
+        "status",
+        "target_root",
+        "skill_name",
+        "adapter",
+        "static_dir",
+        "evidence",
+        "issues",
+    }
+)
+TOP_LEVEL_OPTIONAL = frozenset({"display_name"})
+ADAPTER_PROPERTIES = frozenset(
+    {
+        "kind",
+        "workdir",
+        "command",
+        "required_commands",
+        "default_port",
+        "readiness",
+        "log",
+    }
+)
+READINESS_PROPERTIES = frozenset({"kind", "url"})
+LOG_PROPERTIES = frozenset({"owner", "path"})
+EVIDENCE_PROPERTIES = frozenset({"path", "reason"})
+
+
+def require_exact_properties(
+    value: object,
+    required: frozenset[str],
+    label: str,
+    optional: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    if type(value) is not dict:
+        raise ValueError(f"{label} must be a JSON object with the exact analyzer schema.")
+    keys = set(value)
+    if not required <= keys:
+        raise ValueError(f"{label} is missing a required analyzer schema property.")
+    if not keys <= required | optional:
+        raise ValueError(f"{label} contains an additional analyzer schema property.")
+    return value
 
 
 def require_ready(analysis: dict[str, object]) -> None:
-    if not isinstance(analysis, dict):
-        raise ValueError("Analysis must be an object.")
-    schema_version = analysis.get("schema_version")
-    if type(schema_version) is not int or schema_version != 1 or analysis.get("status") != "ready":
+    if type(analysis) is dict and "target_root" not in analysis:
+        raise ValueError(
+            "Analysis target_root must be a non-empty string; this required schema property is missing."
+        )
+    analysis = require_exact_properties(
+        analysis,
+        TOP_LEVEL_REQUIRED,
+        "Analysis",
+        TOP_LEVEL_OPTIONAL,
+    )
+    schema_version = analysis["schema_version"]
+    if type(schema_version) is not int or schema_version != 1 or analysis["status"] != "ready":
         raise ValueError("Analysis must use schema version 1 and have status ready.")
-    if analysis.get("issues") != []:
+    if type(analysis["issues"]) is not list or analysis["issues"] != []:
         raise ValueError("Analysis contains unresolved issues.")
-    target_root = analysis.get("target_root")
+    target_root = analysis["target_root"]
     if not isinstance(target_root, str) or not target_root:
         raise ValueError("Analysis target_root must be a non-empty string.")
     if any(ord(character) < 32 or ord(character) == 127 for character in target_root):
@@ -34,7 +85,7 @@ def require_ready(analysis: dict[str, object]) -> None:
     target_path = Path(target_root)
     if not target_path.is_absolute() or ".." in target_path.parts:
         raise ValueError("Analysis target_root must be an absolute normalized path.")
-    skill_name = analysis.get("skill_name")
+    skill_name = analysis["skill_name"]
     if isinstance(skill_name, str) and any(
         ord(character) < 32 or ord(character) == 127 for character in skill_name
     ):
@@ -42,55 +93,20 @@ def require_ready(analysis: dict[str, object]) -> None:
     if not isinstance(skill_name, str) or SKILL_NAME_RE.fullmatch(skill_name) is None:
         raise ValueError("Analysis skill_name must be a valid skill identifier.")
     display_name = analysis.get("display_name")
-    if display_name is not None and not isinstance(display_name, str):
+    if "display_name" in analysis and not isinstance(display_name, str):
         raise ValueError("Analysis display_name must be a string when present.")
-
-
-def _credential_key(key: str) -> bool:
-    separated = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
-    separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", separated)
-    parts = [part.lower() for part in re.findall(r"[A-Za-z0-9]+", separated)]
-    credential_noun = r"(?:tokens?|secrets?|passwords?|passphrases?|credentials?|passwds?)[0-9]*"
-    if any(
-        re.fullmatch(credential_noun, part) is not None
-        or part in {"auth", "authentication", "authorization"}
-        for part in parts
-    ):
-        return True
-    for first, second in zip(parts, parts[1:]):
-        if first in {"access", "api", "private"} and re.fullmatch(
-            r"keys?[0-9]*", second
-        ):
-            return True
-        if first in {"auth", "authorization"} and re.fullmatch(
-            r"(?:keys?|headers?|codes?)[0-9]*", second
-        ):
-            return True
-        if first == "pass" and re.fullmatch(r"(?:words?|wds?|phrases?)[0-9]*", second):
-            return True
-    normalized = "".join(parts)
-    return re.search(
-        rf"{credential_noun}$"
-        r"|(?:authorization|authentication)$"
-        r"|(?:accesskey(?:s|ids?)?|apikeys?|privatekeys?|authkeys?|authheaders?|authcodes?|authorizationcodes?)[0-9]*$",
-        normalized,
-    ) is not None
-
-
-def _reject_credentials(value: object) -> None:
-    if isinstance(value, dict):
-        for key, child in value.items():
-            if isinstance(key, str) and _credential_key(key):
-                raise ValueError("Analysis manifest must not contain credential fields.")
-            _reject_credentials(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            _reject_credentials(child)
+    evidence = analysis["evidence"]
+    if type(evidence) is not list:
+        raise ValueError("Analysis evidence must be a list of analyzer schema objects.")
+    for item in evidence:
+        item = require_exact_properties(item, EVIDENCE_PROPERTIES, "Analysis evidence item")
+        if not isinstance(item["path"], str) or not isinstance(item["reason"], str):
+            raise ValueError("Analysis evidence path and reason must be strings.")
+    validate_adapter(analysis)
 
 
 def _canonical_analysis_bytes(analysis: dict[str, object]) -> bytes:
     require_ready(analysis)
-    _reject_credentials(analysis)
     return json.dumps(
         analysis,
         ensure_ascii=False,
@@ -134,7 +150,6 @@ def decode_analysis_manifest(payload: str) -> dict[str, object]:
     if not isinstance(decoded, dict):
         raise ValueError("Analysis manifest JSON must be an object.")
     require_ready(decoded)
-    _reject_credentials(decoded)
     if encode_analysis_manifest(decoded) != payload:
         raise ValueError("Analysis manifest payload is not canonical.")
     return decoded
@@ -282,54 +297,61 @@ def shell_log_path(value: str) -> str:
 
 
 def validate_adapter(analysis: dict[str, object]) -> dict[str, object]:
-    adapter = analysis.get("adapter")
-    if not isinstance(adapter, dict):
-        raise ValueError("Analysis adapter must be an object mapping.")
-    kind = adapter.get("kind")
+    adapter = require_exact_properties(
+        analysis.get("adapter"),
+        ADAPTER_PROPERTIES,
+        "Analysis adapter",
+    )
+    kind = adapter["kind"]
     if kind not in {"managed-command", "existing-launcher", "external", "static"}:
         raise ValueError("Analysis adapter kind is not renderable.")
-    workdir = require_target_relative_path(adapter.get("workdir"), "Adapter workdir")
-    command = adapter.get("command")
-    if not isinstance(command, list) or not all(isinstance(item, str) for item in command):
+    require_target_relative_path(adapter["workdir"], "Adapter workdir")
+    command = adapter["command"]
+    if type(command) is not list or not all(isinstance(item, str) for item in command):
         raise ValueError("Adapter command must be an argv list.")
     for item in command:
         require_shell_text(item, "Adapter command argument", allow_empty=True)
-    required = adapter.get("required_commands")
-    if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+    required = adapter["required_commands"]
+    if type(required) is not list or not all(isinstance(item, str) for item in required):
         raise ValueError("required_commands must be a string list.")
     for item in required:
         name = require_shell_text(item, "Required command")
         if REQUIRED_COMMAND_RE.fullmatch(name) is None:
             raise ValueError("Required command name is malformed or option-like.")
-    log = adapter.get("log")
-    if not isinstance(log, dict):
-        raise ValueError("Adapter log declaration must be an object mapping.")
-    owner = log.get("owner")
-    log_path = log.get("path")
+    log = require_exact_properties(adapter["log"], LOG_PROPERTIES, "Adapter log declaration")
+    owner = log["owner"]
+    log_path = log["path"]
     if owner not in {"target", "generated-start"}:
         raise ValueError("Adapter log owner must be target or generated-start.")
     if log_path is not None:
         require_shell_text(log_path, "Adapter log path")
 
     if kind == "static":
-        if command or required or adapter.get("default_port") is not None or adapter.get("readiness") is not None:
+        if command or required or adapter["default_port"] is not None or adapter["readiness"] is not None:
             raise ValueError("Static adapters must not define commands, a port, or readiness.")
         if owner != "target" or log_path is not None:
             raise ValueError("Static adapters must retain target log ownership.")
-        require_target_relative_path(analysis.get("static_dir"), "Static directory")
+        require_target_relative_path(analysis["static_dir"], "Static directory")
         return adapter
 
-    port = adapter.get("default_port")
+    static_dir = analysis["static_dir"]
+    if static_dir is not None:
+        require_target_relative_path(static_dir, "Dynamic static directory")
+    port = adapter["default_port"]
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("Dynamic adapter requires a valid default port.")
     if kind != "external" and not command:
         raise ValueError("Managed and existing-launcher adapters require a command.")
     if kind == "external" and command:
         raise ValueError("External adapters must not define a start command.")
-    readiness = adapter.get("readiness")
-    if not isinstance(readiness, dict) or readiness.get("kind") != "http":
+    readiness = require_exact_properties(
+        adapter["readiness"],
+        READINESS_PROPERTIES,
+        "Adapter readiness declaration",
+    )
+    if readiness["kind"] != "http":
         raise ValueError("Dynamic adapter requires an HTTP readiness check.")
-    url = require_shell_text(readiness.get("url"), "Dynamic readiness URL")
+    url = require_shell_text(readiness["url"], "Dynamic readiness URL")
     prefix = "http://127.0.0.1:{port}"
     if not url.startswith(prefix + "/") or url.count("{port}") != 1:
         raise ValueError("Dynamic readiness URL must use the exact loopback {port} structure.")
