@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Hermes BOOT Hook"
-  short_description: "Design confirmed Hermes startup workflows"
-  default_prompt: "Use $create-hermes-boot-hook to interview me one decision at a time, confirm our shared understanding, and then create my Hermes startup hook."

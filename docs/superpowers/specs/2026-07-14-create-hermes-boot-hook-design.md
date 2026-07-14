@@ -11,13 +11,11 @@ The generated artifact is not merely three files. It must implement Hermes's ver
 ```text
 create-hermes-boot-hook/
 ├── SKILL.md
-├── agents/
-│   └── openai.yaml
 └── references/
     └── hermes-boot-hooks.md
 ```
 
-Do not add `scripts/` or `assets/`. The agent generates the output files dynamically because their instructions, target, silence conditions, and operational checks vary by user request.
+Do not add `agents/openai.yaml`, `scripts/`, or `assets/`. `SKILL.md` provides the required discovery metadata, and the agent generates output files dynamically because their instructions, target, silence conditions, and operational checks vary by user request.
 
 ## Generated artifact
 

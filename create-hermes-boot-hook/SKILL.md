@@ -68,4 +68,4 @@ Explain the resulting behavior and Session limitation. Do not execute generated 
 - Use a daemon background worker so startup is never blocked by Liveware, an agent turn, or delivery.
 - Never use `_gateway_runner_ref`, edit `sessions.json` or SQLite, or change `mirror_to_session()` to create sessions.
 - Mirroring works only when the destination Session already exists. A startup Hook can run before first activation but cannot guarantee first-contact conversational continuity.
-- Keep this skill to `SKILL.md`, `agents/openai.yaml`, and its reference; do not add copied runtime templates, scripts, or assets.
+- Keep this skill to `SKILL.md` and its reference; do not add UI metadata, copied runtime templates, scripts, or assets.
