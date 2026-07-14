@@ -483,6 +483,8 @@ class AnalyzeTargetTests(unittest.TestCase):
         texts = (
             "Don't run scripts/start-server.sh.\n",
             "You should not run scripts/start-server.sh.\n",
+            "You shouldn't run scripts/start-server.sh.\n",
+            "You can't run scripts/start-server.sh.\n",
             "Example: run scripts/start-server.sh.\n",
             "Run scripts/start-server.sh (deprecated).\n",
         )
@@ -496,6 +498,39 @@ class AnalyzeTargetTests(unittest.TestCase):
                 result = self.module.analyze_target(target)
             self.assertEqual(result["status"], "ready")
             self.assertEqual(result["adapter"]["kind"], "static")
+
+    def test_unrelated_not_before_colon_does_not_suppress_a_launcher(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = write_target(Path(tmp))
+            self.write_static_candidate(target)
+            references = target / "references"
+            references.mkdir()
+            (references / "runtime.md").write_text(
+                "It is not optional: run scripts/start-server.sh.\n",
+                encoding="utf-8",
+            )
+
+            api_result = self.module.analyze_target(target)
+            completed = subprocess.run(
+                [sys.executable, str(Path(self.module.__file__)), str(target)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(api_result["status"], "ambiguous")
+        self.assertIn(
+            "references/runtime.md",
+            {item["path"] for item in api_result["evidence"]},
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stderr, "")
+        cli_result = json.loads(completed.stdout)
+        self.assertEqual(cli_result["status"], "ambiguous")
+        self.assertIn(
+            "references/runtime.md",
+            {item["path"] for item in cli_result["evidence"]},
+        )
 
     def test_negative_action_scope_ends_at_an_affirmative_clause(self) -> None:
         texts = (

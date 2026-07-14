@@ -69,8 +69,8 @@ REFERENCE_LEADING_QUALIFIER_RE = re.compile(
 )
 REFERENCE_ACTION_NEGATION_RE = re.compile(
     r"(?:\b(?:for[ \t]+example|as[ \t]+an?[ \t]+example|example(?=[ \t]*:)|"
-    r"do[ \t]+not|should[ \t]+not|not|never|obsolete|deprecated)\b|"
-    r"\bdon['’]t\b)",
+    r"(?:do|should|can)[ \t]+not|never|obsolete|deprecated)\b|"
+    r"\b(?:don|shouldn|can)['’]t\b)",
     re.IGNORECASE,
 )
 REFERENCE_ACTION_OBSOLETE_RE = re.compile(
