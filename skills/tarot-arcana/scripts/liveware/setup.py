@@ -21,7 +21,7 @@ from pathlib import Path
 
 # ── Ensure clawchat_gateway is importable ────────────────────
 _HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
-_PLUGIN_DIR = _HERMES_HOME.parent / "plugins" / "clawchat"
+_PLUGIN_DIR = _HERMES_HOME / "plugins" / "clawchat"
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 

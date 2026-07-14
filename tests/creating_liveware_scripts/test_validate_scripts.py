@@ -542,16 +542,16 @@ test -f "$STATE_FILE"
         )
 
     def test_legacy_tarot_and_office_fail_with_concise_contract_codes(self) -> None:
-        tarot_setup = (REPO_ROOT / "creative/tarot-arcana/liveware/scripts/setup.py").read_text(encoding="utf-8")
-        tarot_start = (REPO_ROOT / "creative/tarot-arcana/liveware/scripts/start.sh").read_text(encoding="utf-8")
+        tarot_setup = (REPO_ROOT / "skills/tarot-arcana/scripts/liveware/setup.py").read_text(encoding="utf-8")
+        tarot_start = (REPO_ROOT / "skills/tarot-arcana/scripts/liveware/start.sh").read_text(encoding="utf-8")
         tarot_codes = self.codes(self.validator.validate_texts(tarot_setup, tarot_start))
         self.assertTrue({"LW003", "LW010", "LW018", "LW019"} <= tarot_codes)
 
         office_setup = (
-            REPO_ROOT / "productivity/clawchat-officecli/scripts/office-liveware-setup.py"
+            REPO_ROOT / "skills/clawchat-officecli/scripts/office-liveware-setup.py"
         ).read_text(encoding="utf-8")
         office_start = (
-            REPO_ROOT / "productivity/clawchat-officecli/scripts/office-liveware-start.sh"
+            REPO_ROOT / "skills/clawchat-officecli/scripts/office-liveware-start.sh"
         ).read_text(encoding="utf-8")
         office_codes = self.codes(self.validator.validate_texts(office_setup, office_start))
         self.assertTrue({"LW002", "LW004", "LW018", "LW019"} <= office_codes)

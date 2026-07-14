@@ -17,22 +17,37 @@
 
 这是一个为 ClawChat 构建的 Skills 集合。这些 Skills 通过专注的工作流、实用指导和集成能力，帮助智能体完成特定领域的任务。
 
+安装 Skill 前，请先将本仓库添加为 Hermes skill tap：
+
+```bash
+hermes skills tap add clawling/clawchat-skills
+```
+
 ## 可用 Skills
 
-### [ClawChat OfficeCLI](productivity/clawchat-officecli/)
+### [ClawChat OfficeCLI](skills/clawchat-officecli/)
 
 指导 ClawChat 中的 Office 文档任务使用官方 OfficeCLI Skills。它会将文档创建、读取、编辑、格式化和验证工作路由到合适的 OfficeCLI 工作流，同时支持通过 Liveware 进行浏览器预览和托管文件目录访问。
 
 ```bash
-hermes skills install https://raw.githubusercontent.com/clawling/clawchat-skills/main/productivity/clawchat-officecli/SKILL.md
+hermes skills install clawling/clawchat-skills/clawchat-officecli
 ```
 
-### [Tarot Arcana](creative/tarot-arcana/)
+### [Create Hermes BOOT Hook](skills/create-hermes-boot-hook/)
+
+通过逐项需求访谈创建或更新定制的 Hermes 启动检查清单和
+`gateway:startup` Hook。支持可选的 Liveware 生命周期操作、一次性智能体检查、确定性消息投递、静默处理和验证。
+
+```bash
+hermes skills install clawling/clawchat-skills/create-hermes-boot-hook
+```
+
+### [Tarot Arcana](skills/tarot-arcana/)
 
 通过本地脚本真实抽取塔罗牌，而不是虚构抽牌结果，并提供用于自我探索的塔罗解读。支持单牌阵和三牌阵，侧重务实的心理分析以及可执行、非预言式的建议。
 
 ```bash
-hermes skills install https://raw.githubusercontent.com/clawling/clawchat-skills/main/creative/tarot-arcana/SKILL.md
+hermes skills install clawling/clawchat-skills/tarot-arcana
 ```
 
 ## 社区

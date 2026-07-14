@@ -35,8 +35,8 @@ Do not present tarot as proof, diagnosis, professional advice, or guaranteed pre
 | Interpretation rules | `skill_view(name='tarot-arcana', file_path='references/interpretation-rules.md')` |
 | Spread rules | `skill_view(name='tarot-arcana', file_path='references/spreads.md')` |
 | Question templates | `skill_view(name='tarot-arcana', file_path='references/question-framework.md')` |
-| Install liveware (first time) | `python3 liveware/scripts/setup.py && bash liveware/scripts/start.sh <app-id>` (from skill dir) |
-| Activate liveware (daily) | `bash liveware/scripts/start.sh <app-id>` (from skill dir) |
+| Install liveware (first time) | `python3 scripts/liveware/setup.py && bash scripts/liveware/start.sh <app-id>` (from skill dir) |
+| Activate liveware (daily) | `bash scripts/liveware/start.sh <app-id>` (from skill dir) |
 
 Run commands from the skill directory so relative paths resolve. The draw script requires `node` in PATH (Node.js built-ins only, no npm packages).
 
@@ -106,6 +106,105 @@ The script returns structured JSON with cards, positions, orientations, and keyw
 ## Liveware Web App
 
 See `references/liveware-app.md` for setup and activation instructions.
+
+## Bundled Files
+
+Hermes installation must include every runtime support file below:
+
+- `assets/deck.json`
+- `assets/liveware/assets/index-C9bqGTKi.css`
+- `assets/liveware/assets/index-Dwj4Kkvv.js`
+- `assets/liveware/cards/00-TheFool.jpg`
+- `assets/liveware/cards/01-TheMagician.jpg`
+- `assets/liveware/cards/02-TheHighPriestess.jpg`
+- `assets/liveware/cards/03-TheEmpress.jpg`
+- `assets/liveware/cards/04-TheEmperor.jpg`
+- `assets/liveware/cards/05-TheHierophant.jpg`
+- `assets/liveware/cards/06-TheLovers.jpg`
+- `assets/liveware/cards/07-TheChariot.jpg`
+- `assets/liveware/cards/08-Fortitude.jpg`
+- `assets/liveware/cards/09-TheHermit.jpg`
+- `assets/liveware/cards/10-WheelOfFortune.jpg`
+- `assets/liveware/cards/11-Justice.jpg`
+- `assets/liveware/cards/12-TheHangedMan.jpg`
+- `assets/liveware/cards/13-Death.jpg`
+- `assets/liveware/cards/14-Temperance.jpg`
+- `assets/liveware/cards/15-TheDevil.jpg`
+- `assets/liveware/cards/16-TheTower.jpg`
+- `assets/liveware/cards/17-TheStar.jpg`
+- `assets/liveware/cards/18-TheMoon.jpg`
+- `assets/liveware/cards/19-TheSun.jpg`
+- `assets/liveware/cards/20-TheLastJudgment.jpg`
+- `assets/liveware/cards/21-TheWorld.jpg`
+- `assets/liveware/cards/CardBacks.jpg`
+- `assets/liveware/cards/Cups01.jpg`
+- `assets/liveware/cards/Cups02.jpg`
+- `assets/liveware/cards/Cups03.jpg`
+- `assets/liveware/cards/Cups04.jpg`
+- `assets/liveware/cards/Cups05.jpg`
+- `assets/liveware/cards/Cups06.jpg`
+- `assets/liveware/cards/Cups07.jpg`
+- `assets/liveware/cards/Cups08.jpg`
+- `assets/liveware/cards/Cups09.jpg`
+- `assets/liveware/cards/Cups10.jpg`
+- `assets/liveware/cards/Cups11.jpg`
+- `assets/liveware/cards/Cups12.jpg`
+- `assets/liveware/cards/Cups13.jpg`
+- `assets/liveware/cards/Cups14.jpg`
+- `assets/liveware/cards/Pentacles01.jpg`
+- `assets/liveware/cards/Pentacles02.jpg`
+- `assets/liveware/cards/Pentacles03.jpg`
+- `assets/liveware/cards/Pentacles04.jpg`
+- `assets/liveware/cards/Pentacles05.jpg`
+- `assets/liveware/cards/Pentacles06.jpg`
+- `assets/liveware/cards/Pentacles07.jpg`
+- `assets/liveware/cards/Pentacles08.jpg`
+- `assets/liveware/cards/Pentacles09.jpg`
+- `assets/liveware/cards/Pentacles10.jpg`
+- `assets/liveware/cards/Pentacles11.jpg`
+- `assets/liveware/cards/Pentacles12.jpg`
+- `assets/liveware/cards/Pentacles13.jpg`
+- `assets/liveware/cards/Pentacles14.jpg`
+- `assets/liveware/cards/Swords01.jpg`
+- `assets/liveware/cards/Swords02.jpg`
+- `assets/liveware/cards/Swords03.jpg`
+- `assets/liveware/cards/Swords04.jpg`
+- `assets/liveware/cards/Swords05.jpg`
+- `assets/liveware/cards/Swords06.jpg`
+- `assets/liveware/cards/Swords07.jpg`
+- `assets/liveware/cards/Swords08.jpg`
+- `assets/liveware/cards/Swords09.jpg`
+- `assets/liveware/cards/Swords10.jpg`
+- `assets/liveware/cards/Swords11.jpg`
+- `assets/liveware/cards/Swords12.jpg`
+- `assets/liveware/cards/Swords13.jpg`
+- `assets/liveware/cards/Swords14.jpg`
+- `assets/liveware/cards/Wands01.jpg`
+- `assets/liveware/cards/Wands02.jpg`
+- `assets/liveware/cards/Wands03.jpg`
+- `assets/liveware/cards/Wands04.jpg`
+- `assets/liveware/cards/Wands05.jpg`
+- `assets/liveware/cards/Wands06.jpg`
+- `assets/liveware/cards/Wands07.jpg`
+- `assets/liveware/cards/Wands08.jpg`
+- `assets/liveware/cards/Wands09.jpg`
+- `assets/liveware/cards/Wands10.jpg`
+- `assets/liveware/cards/Wands11.jpg`
+- `assets/liveware/cards/Wands12.jpg`
+- `assets/liveware/cards/Wands13.jpg`
+- `assets/liveware/cards/Wands14.jpg`
+- `assets/liveware/deck.json`
+- `assets/liveware/favicon.svg`
+- `assets/liveware/icons.svg`
+- `assets/liveware/index.html`
+- `references/interpretation-rules.md`
+- `references/liveware-app.md`
+- `references/question-framework.md`
+- `references/spreads.md`
+- `scripts/draw-tarot.mjs`
+- `scripts/liveware/server.py`
+- `scripts/liveware/setup.py`
+- `scripts/liveware/start.sh`
 
 ## Post-reading follow-up
 

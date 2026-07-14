@@ -3,7 +3,7 @@
 /**
  * draw-tarot.mjs — Secure tarot card draw script
  *
- * Reads deck.json from the data/ directory (relative to this script),
+ * Reads deck.json from the assets/ directory (relative to this script),
  * shuffles using crypto.randomInt, draws cards without repetition,
  * assigns positions and random orientation, outputs structured JSON.
  *
@@ -20,7 +20,7 @@ import { fileURLToPath } from "url";
 // ── Path resolution ──────────────────────────────────────────────────────
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = join(__dirname, "..");
-const DECK_PATH = join(SKILL_ROOT, "data", "deck.json");
+const DECK_PATH = join(SKILL_ROOT, "assets", "deck.json");
 
 // ── Argument parsing (strict) ────────────────────────────────────────────
 

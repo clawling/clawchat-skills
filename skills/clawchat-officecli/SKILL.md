@@ -177,6 +177,19 @@ find "$DOC_ROOT" -maxdepth 1 -type f \( -name '*.docx' -o -name '*.pptx' -o -nam
 
 Search the managed document root before considering user-provided additional roots.
 
+## Bundled Files
+
+Hermes installation must include every runtime support file below:
+
+- `assets/web/assets/app-CRMN-Ydz.js`
+- `assets/web/assets/index-CjYUnOjr.css`
+- `assets/web/index.html`
+- `assets/web/preview-error.html`
+- `references/officecli-liveware.md`
+- `scripts/office-live-directory.py`
+- `scripts/office-liveware-setup.py`
+- `scripts/office-liveware-start.sh`
+
 ## Agent Workflow
 
 1. Select the most specific official OfficeCLI skill for the requested document work.
@@ -185,5 +198,3 @@ Search the managed document root before considering user-provided additional roo
 4. Identify the target file or ask the user to choose one.
 5. Read `references/officecli-liveware.md` only when Liveware account, app, tunnel, preview startup, or preview-directory troubleshooting is needed.
 6. Keep files in the managed document root unless the user explicitly provides another clean workspace.
-
-

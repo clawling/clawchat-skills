@@ -12,9 +12,9 @@ import sys
 from pathlib import Path
 
 # Add ClawChat plugin to Python path so clawchat_gateway is importable
-# Script is at: {HERMES_HOME}/skills/productivity/clawchat-officecli/scripts/setup.py
+# Script is at: {HERMES_HOME}/skills/clawchat-officecli/scripts/office-liveware-setup.py
 # Plugin is at: {HERMES_HOME}/plugins/clawchat
-_PLUGIN_DIR = Path(__file__).resolve().parent.parent.parent.parent.parent / "plugins" / "clawchat"
+_PLUGIN_DIR = Path(__file__).resolve().parent.parent.parent.parent / "plugins" / "clawchat"
 if _PLUGIN_DIR.exists():
     sys.path.insert(0, str(_PLUGIN_DIR))
 

@@ -9,10 +9,10 @@
 # ============================================================
 set -euo pipefail
 
-# 脚本在 tarot-arcana/liveware/scripts/start.sh
+# 脚本在 tarot-arcana/scripts/liveware/start.sh
 # 技能根目录 = 上两级
 SKILL_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-LIVEWARE_DIR="$SKILL_ROOT/liveware"
+LIVEWARE_DIR="$SKILL_ROOT/scripts/liveware"
 APP_ID_FILE="${HOME}/.clawling/tarot-app-id"
 
 # 读取 app ID：优先用参数，否则从 ~/.clawling/tarot-app-id 读取
@@ -23,8 +23,8 @@ elif [ -f "$APP_ID_FILE" ]; then
   echo "📄 从 $APP_ID_FILE 读取 app ID: $APP_ID"
 else
   echo "❌ 未提供 app ID，且找不到 $APP_ID_FILE"
-  echo "   用法: bash liveware/scripts/start.sh <app-id>"
-  echo "   或先运行 python3 liveware/scripts/setup.py 完成首次安装"
+  echo "   用法: bash scripts/liveware/start.sh <app-id>"
+  echo "   或先运行 python3 scripts/liveware/setup.py 完成首次安装"
   exit 1
 fi
 PORT="${2:-5080}"

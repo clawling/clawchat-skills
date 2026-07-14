@@ -241,7 +241,16 @@ def lifecycle_signals(
             unreadable.append(directory)
             return []
 
-    for directory in (target, liveware, target / "scripts", liveware / "scripts"):
+    standard_scripts = target / "scripts"
+    for directory in (
+        target,
+        liveware,
+        standard_scripts,
+        liveware / "scripts",
+        standard_scripts / "liveware",
+    ):
+        if directory == standard_scripts / "liveware" and standard_scripts in unreadable:
+            continue
         for path in list_directory(directory):
             if path.suffix.lower() != ".service" and not lifecycle_script_name(path):
                 continue

@@ -266,7 +266,8 @@ liveware 只是网页入口；塔罗分析必须由 Hermes agent 使用 `tarot-a
 class TarotHandler(SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(Path(__file__).parent / "static"), **kwargs)
+        skill_root = Path(__file__).resolve().parents[2]
+        super().__init__(*args, directory=str(skill_root / "assets" / "liveware"), **kwargs)
 
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -367,7 +368,7 @@ class TarotHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/deck":
-            deck_path = Path(__file__).parent.parent / "data" / "deck.json"
+            deck_path = Path(__file__).resolve().parents[2] / "assets" / "deck.json"
             if deck_path.exists():
                 data = deck_path.read_bytes()
                 self.send_response(200)

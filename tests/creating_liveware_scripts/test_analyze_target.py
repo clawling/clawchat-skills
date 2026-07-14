@@ -1071,12 +1071,12 @@ class AnalyzeTargetTests(unittest.TestCase):
         )
 
     def test_real_tarot_launcher_prevents_automatic_python_replacement(self) -> None:
-        target = REPO_ROOT / "creative" / "tarot-arcana"
+        target = REPO_ROOT / "skills" / "tarot-arcana"
         result = self.module.analyze_target(target)
         self.assertEqual(result["status"], "ambiguous")
         self.assertIsNone(result["adapter"])
         self.assertIn(
-            "liveware/scripts/start.sh",
+            "scripts/liveware/start.sh",
             {item["path"] for item in result["evidence"]},
         )
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "groupings": [
+    {
+      "title": "Productivity",
+      "skills": ["clawchat-officecli"]
+    },
+    {
+      "title": "Automation",
+      "skills": ["create-hermes-boot-hook"]
+    },
+    {
+      "title": "Creative",
+      "skills": ["tarot-arcana"]
+    }
+  ]
+}

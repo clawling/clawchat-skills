@@ -1,6 +1,9 @@
 ---
 name: create-hermes-boot-hook
 description: Create or update customized Hermes Agent BOOT.md startup checklists and gateway:startup hooks, including HOOK.yaml and handler.py, through a one-question-at-a-time requirements interview. Supports user-chosen Liveware setup/start policies, one-shot agent execution, optional deterministic delivery, silence handling, validation, and Session-mirroring boundaries. Use when a user wants Liveware activation, checks, reports, alerts, maintenance, or other work whenever the Hermes Gateway starts or restarts.
+metadata:
+  hermes:
+    tags: [Automation, Hermes, Hooks, Liveware]
 ---
 
 # Create Hermes BOOT Hook

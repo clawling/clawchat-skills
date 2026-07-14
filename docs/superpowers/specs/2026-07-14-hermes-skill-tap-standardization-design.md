@@ -19,6 +19,9 @@ skills/
 │   │   └── web/
 │   ├── references/
 │   └── scripts/
+├── create-hermes-boot-hook/
+│   ├── SKILL.md
+│   └── references/
 └── tarot-arcana/
     ├── SKILL.md
     ├── assets/
@@ -29,8 +32,9 @@ skills/
         └── liveware/
 ```
 
-The existing `creative/` and `productivity/` copies will be removed by the
-migration. Category information will remain in `SKILL.md` tags and in a root
+The existing `creative/` and `productivity/` copies and the root-level
+`create-hermes-boot-hook/` directory will be removed by the migration.
+Category information will remain in `SKILL.md` tags and in a root
 `skills.sh.json` grouping file instead of directory nesting.
 
 ## OfficeCLI Migration
@@ -58,11 +62,20 @@ migration. Category information will remain in `SKILL.md` tags and in a root
   script, deck, reference documents, Liveware programs, and every required
   Liveware static asset.
 
+## Hermes BOOT Hook Migration
+
+- Move `create-hermes-boot-hook/` to
+  `skills/create-hermes-boot-hook/`.
+- Add Hermes metadata tags for Automation, Hermes, Hooks, and Liveware.
+- Keep its only support document under `references/` and ensure the main
+  `SKILL.md` directly references it.
+
 ## Tap Metadata and Installation
 
 Add `skills.sh.json` with two groupings:
 
 - `Productivity`: `clawchat-officecli`
+- `Automation`: `create-hermes-boot-hook`
 - `Creative`: `tarot-arcana`
 
 The README files will describe the standard tap workflow:
@@ -70,6 +83,7 @@ The README files will describe the standard tap workflow:
 ```bash
 hermes skills tap add clawling/clawchat-skills
 hermes skills install clawling/clawchat-skills/clawchat-officecli
+hermes skills install clawling/clawchat-skills/create-hermes-boot-hook
 hermes skills install clawling/clawchat-skills/tarot-arcana
 ```
 
@@ -89,14 +103,14 @@ such as `data/`, `liveware/`, or `web/` inside a skill.
 
 ## Compatibility
 
-This is an intentional repository-path migration. The old `creative/` and
-`productivity/` paths will not be retained as duplicates or symlinks. Runtime
-behavior and the skill names `clawchat-officecli` and `tarot-arcana` remain
+This is an intentional repository-path migration. The old `creative/`,
+`productivity/`, and root `create-hermes-boot-hook/` paths will not be retained
+as duplicates or symlinks. Runtime behavior and all three skill names remain
 unchanged.
 
 ## Verification
 
-- Confirm the tap root has exactly the two expected direct child skill
+- Confirm the tap root has exactly the three expected direct child skill
   directories and each contains `SKILL.md`.
 - Confirm no old `creative/` or `productivity/` skill directory remains.
 - Parse each main `SKILL.md` with Hermes' referenced-support-file rules and

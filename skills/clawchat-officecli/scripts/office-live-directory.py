@@ -60,7 +60,7 @@ def office_bin() -> str:
 OFFICE_BIN = office_bin()
 PORT_BASE = int(os.environ.get("OFFICE_PREVIEW_PORT_BASE", "26400"))
 PORT_SPAN = int(os.environ.get("OFFICE_PREVIEW_PORT_SPAN", "200"))
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+WEB_DIR = Path(__file__).resolve().parent.parent / "assets" / "web"
 STATIC_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",

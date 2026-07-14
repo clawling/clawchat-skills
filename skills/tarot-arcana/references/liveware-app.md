@@ -8,7 +8,7 @@ The liveware web app is an optional browser interface. It does not replace the a
 
 ```bash
 cd <skill-dir>
-python3 liveware/scripts/setup.py
+python3 scripts/liveware/setup.py
 ```
 
 The script:
@@ -24,7 +24,7 @@ After setup, or when tarot is already registered, start the server and bind the 
 
 ```bash
 cd <skill-dir>
-bash liveware/scripts/start.sh <app-id>
+bash scripts/liveware/start.sh <app-id>
 ```
 
 The app ID is required. When called from the boot handler (`handler.py`'s `_start_tarot_liveware`), it passes the app ID as the first argument automatically.
