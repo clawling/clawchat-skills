@@ -12,13 +12,14 @@ Preserve the supplied command, service manager, lifecycle, readiness, and loggin
 ## Workflow
 
 1. Require target `SKILL.md`. Output only `liveware/scripts/setup.py` and `liveware/scripts/start.sh`. Read `references/liveware-script-contract.md` completely.
-2. Capture analyzer stdout outside target, then inspect every evidence path and reason:
+2. Resolve the absolute directory containing this `SKILL.md` as `SKILL_DIR`. Capture analyzer stdout outside target, then inspect every evidence path and reason:
 
 ```bash
 TARGET=/absolute/path/to/hermes-skill
+SKILL_DIR=/absolute/path/to/creating-liveware-scripts
 ANALYSIS_DIR="$(mktemp -d /tmp/creating-liveware-scripts.XXXXXX)"
 ANALYSIS_JSON="$ANALYSIS_DIR/analysis.json"
-python3 -B .agents/skills/creating-liveware-scripts/scripts/analyze_target.py "$TARGET" >"$ANALYSIS_JSON" || test "$?" -eq 2
+python3 -B "$SKILL_DIR/scripts/analyze_target.py" "$TARGET" >"$ANALYSIS_JSON" || test "$?" -eq 2
 ```
 
 Generate and Repair require ready analysis; never write provisional output when non-ready. On `ambiguous` or `blocked`, ask one question. Do not guess an entrypoint, port, lifecycle owner, readiness check, or log path.
@@ -28,17 +29,17 @@ Preserve exact argv, including lifecycle wrappers like `nohup`, only after evide
 3. Audit continues when analysis is not ready. Audit a non-ready target without `--analysis`: run the validator without `--analysis` and report both analyzer issues and validator findings. Audit is read-only. Do not run `py_compile` in Audit mode:
 
 ```bash
-python3 -B .agents/skills/creating-liveware-scripts/scripts/validate_scripts.py "$TARGET"
+python3 -B "$SKILL_DIR/scripts/validate_scripts.py" "$TARGET"
 ```
 
 4. For Generate or apply, or Repair, preview before writing:
 
 ```bash
-python3 -B .agents/skills/creating-liveware-scripts/scripts/render_scripts.py "$TARGET" "$ANALYSIS_JSON"
-python3 -B .agents/skills/creating-liveware-scripts/scripts/render_scripts.py "$TARGET" "$ANALYSIS_JSON" --apply
-python3 -B .agents/skills/creating-liveware-scripts/scripts/render_scripts.py "$TARGET" "$ANALYSIS_JSON" --replace-legacy
-python3 -B .agents/skills/creating-liveware-scripts/scripts/render_scripts.py "$TARGET" "$ANALYSIS_JSON" --replace-legacy --apply
-python3 -B .agents/skills/creating-liveware-scripts/scripts/validate_scripts.py "$TARGET" --analysis "$ANALYSIS_JSON"
+python3 -B "$SKILL_DIR/scripts/render_scripts.py" "$TARGET" "$ANALYSIS_JSON"
+python3 -B "$SKILL_DIR/scripts/render_scripts.py" "$TARGET" "$ANALYSIS_JSON" --apply
+python3 -B "$SKILL_DIR/scripts/render_scripts.py" "$TARGET" "$ANALYSIS_JSON" --replace-legacy
+python3 -B "$SKILL_DIR/scripts/render_scripts.py" "$TARGET" "$ANALYSIS_JSON" --replace-legacy --apply
+python3 -B "$SKILL_DIR/scripts/validate_scripts.py" "$TARGET" --analysis "$ANALYSIS_JSON"
 PYTHONPYCACHEPREFIX="$ANALYSIS_DIR/pycache" python3 -B -m py_compile "$TARGET/liveware/scripts/setup.py"
 bash -n "$TARGET/liveware/scripts/start.sh"
 ```

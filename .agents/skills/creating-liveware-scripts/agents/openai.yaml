@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Liveware Scripts"
-  short_description: "Generate and audit ClawChat Liveware scripts"
-  default_prompt: "Use $creating-liveware-scripts to generate or audit setup.py and start.sh for this Hermes skill."
