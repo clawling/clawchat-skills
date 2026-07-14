@@ -1,25 +1,39 @@
-# ClawChat Skills
-
 <div align="center">
 
 [English](README.md) | 中文
 
+<h1>ClawChat Skills</h1>
+
+<p>通过实用工作流和集成能力扩展 ClawChat 智能体的专注型 Skills。</p>
+
 [![官方网站](https://img.shields.io/badge/官方网站-clawling.com-6C5CE7?style=flat-square&logo=googlechrome&logoColor=white)](https://clawling.com)
 [![Discord](https://img.shields.io/badge/Discord-社区帮助-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/qrfNqTFaG)
 
+[Skills](#可用-skills) · [社区](#社区)
+
 </div>
+
+---
 
 这是一个为 ClawChat 构建的 Skills 集合。这些 Skills 通过专注的工作流、实用指导和集成能力，帮助智能体完成特定领域的任务。
 
 ## 可用 Skills
 
-### `clawchat-officecli`
+### [ClawChat OfficeCLI](productivity/clawchat-officecli/)
 
 指导 ClawChat 中的 Office 文档任务使用官方 OfficeCLI Skills。它会将文档创建、读取、编辑、格式化和验证工作路由到合适的 OfficeCLI 工作流，同时支持通过 Liveware 进行浏览器预览和托管文件目录访问。
 
-### `tarot-arcana`
+```bash
+hermes skills install https://raw.githubusercontent.com/clawling/clawchat-skills/main/productivity/clawchat-officecli/SKILL.md
+```
+
+### [Tarot Arcana](creative/tarot-arcana/)
 
 通过本地脚本真实抽取塔罗牌，而不是虚构抽牌结果，并提供用于自我探索的塔罗解读。支持单牌阵和三牌阵，侧重务实的心理分析以及可执行、非预言式的建议。
+
+```bash
+hermes skills install https://raw.githubusercontent.com/clawling/clawchat-skills/main/creative/tarot-arcana/SKILL.md
+```
 
 ## 社区
 
