@@ -50,36 +50,29 @@ def _credential_key(key: str) -> bool:
     separated = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
     separated = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", separated)
     parts = [part.lower() for part in re.findall(r"[A-Za-z0-9]+", separated)]
-    if set(parts) & {
-        "auth",
-        "authentication",
-        "authorization",
-        "credential",
-        "credentials",
-        "passphrase",
-        "passwd",
-        "password",
-        "secret",
-        "token",
-    }:
+    credential_noun = r"(?:tokens?|secrets?|passwords?|passphrases?|credentials?|passwds?)[0-9]*"
+    if any(
+        re.fullmatch(credential_noun, part) is not None
+        or part in {"auth", "authentication", "authorization"}
+        for part in parts
+    ):
         return True
-    pairs = set(zip(parts, parts[1:]))
-    if pairs & {
-        ("access", "key"),
-        ("api", "key"),
-        ("auth", "header"),
-        ("auth", "key"),
-        ("pass", "phrase"),
-        ("pass", "wd"),
-        ("pass", "word"),
-        ("private", "key"),
-    }:
-        return True
+    for first, second in zip(parts, parts[1:]):
+        if first in {"access", "api", "private"} and re.fullmatch(
+            r"keys?[0-9]*", second
+        ):
+            return True
+        if first in {"auth", "authorization"} and re.fullmatch(
+            r"(?:keys?|headers?|codes?)[0-9]*", second
+        ):
+            return True
+        if first == "pass" and re.fullmatch(r"(?:words?|wds?|phrases?)[0-9]*", second):
+            return True
     normalized = "".join(parts)
     return re.search(
-        r"(?:secret|password|passwd|passphrase|credentials?|authorization|authentication)$"
-        r"|token[0-9]*$"
-        r"|(?:accesskey(?:id)?|apikey|privatekey|authkey|authheader)$",
+        rf"{credential_noun}$"
+        r"|(?:authorization|authentication)$"
+        r"|(?:accesskey(?:s|ids?)?|apikeys?|privatekeys?|authkeys?|authheaders?|authcodes?|authorizationcodes?)[0-9]*$",
         normalized,
     ) is not None
 

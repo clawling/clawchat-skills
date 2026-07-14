@@ -198,6 +198,29 @@ class RenderSetupTests(unittest.TestCase):
             "authHeader",
             "credential",
             "token2",
+            "tokens",
+            "secrets",
+            "passwords",
+            "passphrases",
+            "accessKeys",
+            "apiKeys",
+            "privateKeys",
+            "secret2",
+            "password2",
+            "clientsecret2",
+            "authcode",
+            "auth_code",
+            "authCode",
+            "authorizationcode",
+            "authorization_code",
+            "authorizationCode",
+            "credentials",
+            "clientCredentials",
+            "refreshTokens",
+            "apiSecrets",
+            "accessKeys2",
+            "apikeys3",
+            "privatekeys4",
         ):
             with self.subTest(key=key):
                 with self.assertRaisesRegex(ValueError, "credential"):
@@ -226,6 +249,21 @@ class RenderSetupTests(unittest.TestCase):
                     ),
                     safe,
                 )
+
+    def test_manifest_encoder_rejects_recursive_credential_variants(self) -> None:
+        for key in (
+            "tokens",
+            "secret2",
+            "clientCredentials",
+            "apiSecrets",
+            "accessKeys",
+            "authorizationcode",
+        ):
+            with self.subTest(key=key):
+                nested = copy.deepcopy(READY)
+                nested["evidence"] = [{"metadata": [{key: "do-not-embed"}]}]
+                with self.assertRaisesRegex(ValueError, "credential"):
+                    self.module.encode_analysis_manifest(nested)
 
     def test_manifest_identity_is_type_exact_for_nested_json_values(self) -> None:
         integer = copy.deepcopy(READY)
