@@ -30,9 +30,7 @@ hermes skills tap add clawling/clawchat-skills
 
 ## Available Skills
 
-### Productivity Skill
-
-#### [CLAWCHAT OFFICECLI](skills/clawchat-officecli/)
+### [CLAWCHAT OFFICECLI](skills/clawchat-officecli/)
 
 Guides Office document work in ClawChat through the official OfficeCLI skills.
 It routes document creation, reading, editing, formatting, and validation to
@@ -43,9 +41,19 @@ previews and managed file-directory access.
 hermes skills install clawling/clawchat-skills/clawchat-officecli
 ```
 
-### Development Skills
+### [TAROT ARCANA](skills/tarot-arcana/)
 
-#### [CREATE LIVEWARE SCRIPTS](skills/create-liveware-scripts/)
+Provides reflective tarot readings using cards drawn by a local script rather
+than fabricated results. It supports one-card and three-card spreads with
+grounded psychological interpretation and actionable, non-prophetic guidance.
+
+```bash
+hermes skills install clawling/clawchat-skills/tarot-arcana
+```
+
+## Development Skills
+
+### [CREATE LIVEWARE SCRIPTS](skills/create-liveware-scripts/)
 
 Generates, audits, and repairs ClawChat Liveware `setup.py` and `start.sh`
 files for Hermes skills while preserving the target service's lifecycle,
@@ -55,7 +63,7 @@ readiness, logging, and launch behavior.
 hermes skills install clawling/clawchat-skills/create-liveware-scripts
 ```
 
-#### [CREATE HERMES BOOT HOOK](skills/create-hermes-boot-hook/)
+### [CREATE HERMES BOOT HOOK](skills/create-hermes-boot-hook/)
 
 Creates or updates customized Hermes startup checklists and
 `gateway:startup` hooks through a one-question-at-a-time requirements
@@ -64,18 +72,6 @@ checks, deterministic delivery, silence handling, and validation.
 
 ```bash
 hermes skills install clawling/clawchat-skills/create-hermes-boot-hook
-```
-
-### Creative Skill
-
-#### [TAROT ARCANA](skills/tarot-arcana/)
-
-Provides reflective tarot readings using cards drawn by a local script rather
-than fabricated results. It supports one-card and three-card spreads with
-grounded psychological interpretation and actionable, non-prophetic guidance.
-
-```bash
-hermes skills install clawling/clawchat-skills/tarot-arcana
 ```
 
 ## Community
