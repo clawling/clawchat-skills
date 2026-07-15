@@ -28,6 +28,10 @@ Add this repository as a Hermes skill tap before installing a skill:
 hermes skills tap add clawling/clawchat-skills
 ```
 
+All skills can be created quickly from the
+[ClawNest marketplace](https://clawling.com/nest/), with **$5 in starting credit**
+included.
+
 ## Available Skills
 
 ### [CLAWCHAT OFFICECLI](skills/clawchat-officecli/)
