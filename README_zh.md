@@ -47,6 +47,10 @@ hermes skills install clawling/clawchat-skills/tarot-arcana
 
 ## Development Skills
 
+### [XHS OPERATOR](skills/xhs-operator/)
+
+开发中。
+
 ### [CREATE LIVEWARE SCRIPTS](skills/create-liveware-scripts/)
 
 为 Hermes Skills 生成、审计和修复 ClawChat Liveware 的 `setup.py` 与

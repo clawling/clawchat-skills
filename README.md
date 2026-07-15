@@ -53,6 +53,10 @@ hermes skills install clawling/clawchat-skills/tarot-arcana
 
 ## Development Skills
 
+### [XHS OPERATOR](skills/xhs-operator/)
+
+In development.
+
 ### [CREATE LIVEWARE SCRIPTS](skills/create-liveware-scripts/)
 
 Generates, audits, and repairs ClawChat Liveware `setup.py` and `start.sh`
