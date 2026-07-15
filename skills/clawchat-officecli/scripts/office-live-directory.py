@@ -105,8 +105,8 @@ def share_requests_path() -> Path:
     return state_dir() / "share-requests.jsonl"
 
 
-def liveware_env_path() -> Path:
-    return state_dir() / "liveware.env"
+def liveware_app_state_path() -> Path:
+    return Path.home() / ".clawling" / "apps" / "clawchat-officecli.json"
 
 
 def load_state() -> dict:
@@ -451,16 +451,13 @@ def ensure_doc(path: Path) -> None:
 
 def public_directory_url() -> str:
     try:
-        text = liveware_env_path().read_text(encoding="utf-8")
-    except OSError:
+        state = json.loads(liveware_app_state_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
         return ""
-    for line in text.splitlines():
-        if line.startswith("OFFICE_APP_ID="):
-            app_id = line.split("=", 1)[1].strip()
-            if app_id:
-                domain = os.environ.get("LIVEWARE_DOMAIN", "apps.clawling.io")
-                return f"https://{app_id}.{domain}"
-    return ""
+    if not isinstance(state, dict) or state.get("registered") is not True:
+        return ""
+    public_url = state.get("public_url")
+    return public_url if isinstance(public_url, str) else ""
 
 
 def unique_archive_path(path: Path) -> Path:

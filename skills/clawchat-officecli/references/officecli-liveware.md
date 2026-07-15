@@ -1,15 +1,17 @@
 # OfficeCLI Liveware
 
 Use this reference when a user needs the OfficeCLI preview directory exposed through
-Liveware. Use the bundled scripts from `${HERMES_SKILL_DIR}/scripts`.
+Liveware. Liveware lifecycle scripts live under `${HERMES_SKILL_DIR}/liveware/scripts`.
 
 ## Scripts
 
 | Script | When to use |
 | --- | --- |
-| `office-liveware-setup.py` | First-time setup — run before `start.sh` |
-| `office-liveware-start.sh` | Start the browser preview directory |
-| `office-live-directory.py` | Started by `start.sh`; not run directly |
+| `liveware/scripts/setup.py` | Prepare the Liveware app and ClawChat registration |
+| `liveware/scripts/start.sh` | Start/check the preview directory and bind the tunnel |
+| `scripts/office-live-directory-launch.sh` | Server-only lifecycle adapter used by `start.sh` |
+| `scripts/office-liveware-server-only.sh` | Preserved Office directory lifecycle and logging implementation |
+| `scripts/office-live-directory.py` | Directory server invoked by the adapter |
 
 ## Setup
 
@@ -17,25 +19,19 @@ Run setup before the first preview session, or when authentication or app creati
 not prepared yet:
 
 ```bash
-${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
+python3 ${HERMES_SKILL_DIR}/liveware/scripts/setup.py
 ```
 
 The start script does NOT call setup automatically — run setup first, then start:
 
 ```bash
-${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
-${HERMES_SKILL_DIR}/scripts/office-liveware-start.sh 26316
+python3 ${HERMES_SKILL_DIR}/liveware/scripts/setup.py
+PORT=26316 bash ${HERMES_SKILL_DIR}/liveware/scripts/start.sh
 ```
 
 Useful environment variables:
 
 - `OFFICE_LIVE_HOME`: workflow home, default `${HERMES_HOME:-$HOME/.hermes}/workspace/office-live`.
-- `OFFICE_APP_ID`: reuse a known Liveware app id.
-- `OFFICE_APP_NAME`: has no effect. App name is hardcoded as `OfficeCLI-Live`.
-- `LIVEWARE_TOKEN`: an already exchanged Liveware control-plane token. The Liveware CLI
-  consumes it directly; do not pass it to `liveware login --access-token`.
-- `OFFICE_LIVEWARE_INSTALL_CMD`: explicit command to install Liveware when it is missing.
-- `OFFICE_LIVEWARE_INSTALL_URL`: install script URL for Liveware when it is missing.
 - `LIVEWARE_BIN`: Liveware binary name or path, default `liveware`.
 - `LIVEWARE_DOMAIN`: Liveware public URL domain suffix, default `apps.clawling.io`.
 - `HERMES_HOME`: Hermes home directory, optional — falls back to `$HOME/.hermes` when unset.
@@ -46,14 +42,14 @@ Run start directly when the user needs the browser preview directory. Do not ask
 the user to perform setup before trying this script.
 
 ```bash
-${HERMES_SKILL_DIR}/scripts/office-liveware-start.sh 26316
+PORT=26316 bash ${HERMES_SKILL_DIR}/liveware/scripts/start.sh
 ```
 
 If start fails, run setup once and then run start again:
 
 ```bash
-${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py
-${HERMES_SKILL_DIR}/scripts/office-liveware-start.sh 26316
+python3 ${HERMES_SKILL_DIR}/liveware/scripts/setup.py
+PORT=26316 bash ${HERMES_SKILL_DIR}/liveware/scripts/start.sh
 ```
 
 Only ask the user for help when Liveware authentication credentials are missing
@@ -63,11 +59,8 @@ Useful environment variables:
 
 - `OFFICE_LIVE_HOME`: workflow home, default `${HERMES_HOME:-$HOME/.hermes}/workspace/office-live`.
 - `OFFICE_DOC_ROOTS`: colon-separated document roots, default `${OFFICE_LIVE_HOME}/documents`.
-- `OFFICE_APP_ID`: reuse a known Liveware app id.
 - `OFFICE_DIRECTORY_PORT`: local directory service port.
 - `OFFICE_DIRECTORY_SCRIPT`: alternate path to `office-live-directory.py`.
-- `OFFICE_LIVEWARE_SETUP_SCRIPT`: alternate path to `office-liveware-setup.py`.
-  Not used by `start.sh` — `start.sh` does not call setup.
 - `OFFICE_DIRECTORY_LOG`: directory service log path.
 - `LIVEWARE_BIN`: Liveware binary name or path, default `liveware`.
 - `LIVEWARE_DOMAIN`: Liveware public URL domain suffix, default `apps.clawling.io`.
@@ -77,7 +70,7 @@ Useful environment variables:
 
 - User-facing Office files: `${OFFICE_DOC_ROOTS:-${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/documents}`
 - Runtime state and logs: `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state`
-- Liveware app id state: `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}/.state/liveware.env`
+- Liveware app state: `$HOME/.clawling/apps/clawchat-officecli.json`
 
 Use these directories consistently:
 
@@ -101,8 +94,8 @@ Directory rules:
 ## Service Paths
 
 - OfficeCLI binary: `${OFFICE_BIN:-officecli}`; if `officecli` is not on `PATH`, set `OFFICE_BIN` to the installed binary path.
-- Liveware setup script (primary): `${HERMES_SKILL_DIR}/scripts/office-liveware-setup.py`
-- Liveware start script: `${HERMES_SKILL_DIR}/scripts/office-liveware-start.sh`
+- Liveware setup script: `${HERMES_SKILL_DIR}/liveware/scripts/setup.py`
+- Liveware start script: `${HERMES_SKILL_DIR}/liveware/scripts/start.sh`
 - Directory server: `${HERMES_SKILL_DIR}/scripts/office-live-directory.py`
 - Liveware script reference: `${HERMES_SKILL_DIR}/references/officecli-liveware.md`
 - Default workflow home: `${OFFICE_LIVE_HOME:-$HERMES_HOME/workspace/office-live}`

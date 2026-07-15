@@ -1,6 +1,12 @@
 ---
 name: clawchat-officecli
 description: Use this skill when Hermes needs to work with OfficeCLI in ClawChat, route Office document tasks to official OfficeCLI skills, read browser-selected Office content, manage the Office document root, or start the Liveware preview directory.
+version: "1.1"
+author: clawling
+license: MIT
+metadata:
+  hermes:
+    tags: [Productivity, Office, ClawChat, Liveware]
 ---
 
 # Clawchat OfficeCLI
@@ -76,11 +82,18 @@ Use this skill to:
 
 ## Requirements
 
-Install and verify these before using the preview-directory workflow.
+Verify these before using the preview-directory workflow. Run the bundled
+idempotent helper first; it installs OfficeCLI and each official skill only when
+the corresponding dependency is missing:
+
+```bash
+bash ${HERMES_SKILL_DIR}/scripts/officecli-ensure.sh
+```
 
 Required:
 
-1. Install OfficeCLI and set `OFFICE_BIN` to the actual binary path.
+1. If OfficeCLI is still unavailable, install it and set `OFFICE_BIN` to the
+   actual binary path.
 
    ```bash
    INSTALL_DIR="${HERMES_HOME}/workspace/office-live/.state/scratch"
@@ -96,7 +109,8 @@ Required:
 
    Always run OfficeCLI with `DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1` in this container.
 
-2. Install the official OfficeCLI Hermes skills.
+2. If any required official OfficeCLI Hermes skill is still unavailable,
+   install only that missing skill.
 
    ```bash
    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 "$OFFICE_BIN" skills hermes
@@ -163,8 +177,8 @@ directory-server state, or preview troubleshooting, read:
 ${HERMES_SKILL_DIR}/references/officecli-liveware.md
 ```
 
-Use the bundled scripts described there. Do not ask the user to complete preview
-setup before trying the start script.
+Use the bundled scripts described there. `start.sh` never performs setup; when
+state is missing or invalid, run `setup.py` only with the user's authorization.
 
 ## List Managed Files
 
@@ -187,8 +201,11 @@ Hermes installation must include every runtime support file below:
 - `assets/web/preview-error.html`
 - `references/officecli-liveware.md`
 - `scripts/office-live-directory.py`
-- `scripts/office-liveware-setup.py`
-- `scripts/office-liveware-start.sh`
+- `scripts/office-live-directory-launch.sh`
+- `scripts/office-liveware-server-only.sh`
+- `scripts/officecli-ensure.sh`
+- `liveware/scripts/setup.py`
+- `liveware/scripts/start.sh`
 
 ## Agent Workflow
 
