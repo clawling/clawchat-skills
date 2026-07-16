@@ -22,3 +22,5 @@ skills-lock.json
 
 # Local subagent-driven development state
 .superpowers/
+
+.image-cards

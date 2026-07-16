@@ -6,6 +6,10 @@
       "skills": ["clawchat-officecli"]
     },
     {
+      "title": "Finance",
+      "skills": ["personal-account-management"]
+    },
+    {
       "title": "Development",
       "skills": [
         "create-hermes-skill",

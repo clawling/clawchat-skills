@@ -60,6 +60,16 @@ hermes skills install clawling/clawchat-skills/tarot-arcana
 In development. Uses a real local browser to simulate normal human interactions
 when publishing Xiaohongshu image-and-text notes.
 
+### [PERSONAL ACCOUNT MANAGEMENT](skills/personal-account-management/)
+
+Maintains a confirmation-first personal finance ledger for accounts, balances,
+income, expenses, transfers, subscriptions, budgets, receipts, and monthly
+analysis, with an optional read-only Liveware dashboard.
+
+```bash
+hermes skills install clawling/clawchat-skills/personal-account-management
+```
+
 ## Development Skills
 
 ### [CREATE HERMES SKILL](skills/create-hermes-skill/)

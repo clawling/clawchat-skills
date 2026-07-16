@@ -49,6 +49,15 @@ hermes skills install clawling/clawchat-skills/tarot-arcana
 
 开发中。使用本机真实浏览器模拟真人操作，发送小红书图文笔记。
 
+### [PERSONAL ACCOUNT MANAGEMENT](skills/personal-account-management/)
+
+以“先预览、后确认”的方式维护个人财务账本，支持账户、余额、收入、支出、
+转账、订阅、预算、票据和月度分析，并提供可选的只读 Liveware 仪表盘。
+
+```bash
+hermes skills install clawling/clawchat-skills/personal-account-management
+```
+
 ## Development Skills
 
 ### [CREATE HERMES SKILL](skills/create-hermes-skill/)
