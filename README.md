@@ -41,6 +41,8 @@ It routes document creation, reading, editing, formatting, and validation to
 the appropriate OfficeCLI workflow, while supporting Liveware for browser
 previews and managed file-directory access.
 
+[Quick create in ClawNest](https://clawling.com/nest/share/?code=9a98-31112b58-79a21971)
+
 ```bash
 hermes skills install clawling/clawchat-skills/clawchat-officecli
 ```
@@ -50,6 +52,8 @@ hermes skills install clawling/clawchat-skills/clawchat-officecli
 Provides reflective tarot readings using cards drawn by a local script rather
 than fabricated results. It supports one-card and three-card spreads with
 grounded psychological interpretation and actionable, non-prophetic guidance.
+
+[Quick create in ClawNest](https://clawling.com/nest/share/?code=2715-31ee3e82-0a259262)
 
 ```bash
 hermes skills install clawling/clawchat-skills/tarot-arcana

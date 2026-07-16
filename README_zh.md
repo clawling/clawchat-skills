@@ -33,6 +33,8 @@ hermes skills tap add clawling/clawchat-skills
 
 指导 ClawChat 中的 Office 文档任务使用官方 OfficeCLI Skills。它会将文档创建、读取、编辑、格式化和验证工作路由到合适的 OfficeCLI 工作流，同时支持通过 Liveware 进行浏览器预览和托管文件目录访问。
 
+[在 ClawNest 中快速创建](https://clawling.com/nest/share/?code=9a98-31112b58-79a21971)
+
 ```bash
 hermes skills install clawling/clawchat-skills/clawchat-officecli
 ```
@@ -40,6 +42,8 @@ hermes skills install clawling/clawchat-skills/clawchat-officecli
 ### [TAROT ARCANA](skills/tarot-arcana/)
 
 通过本地脚本真实抽取塔罗牌，而不是虚构抽牌结果，并提供用于自我探索的塔罗解读。支持单牌阵和三牌阵，侧重务实的心理分析以及可执行、非预言式的建议。
+
+[在 ClawNest 中快速创建](https://clawling.com/nest/share/?code=2715-31ee3e82-0a259262)
 
 ```bash
 hermes skills install clawling/clawchat-skills/tarot-arcana
