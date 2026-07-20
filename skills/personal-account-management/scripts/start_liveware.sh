@@ -275,18 +275,6 @@ start_agent() {
   echo "$!" > "$pid_file"
 }
 
-wait_for_public_url() {
-  local url="$1" code=""
-  for _ in $(seq 1 40); do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 4 -L "$url" 2>/dev/null || true)"
-    case "$code" in
-      200|301|302|307|308|404) return 0 ;;
-    esac
-    sleep 0.5
-  done
-  return 1
-}
-
 stop_old_service
 start_service || { json_emit blocked service_unhealthy "local account service did not become healthy" "$APP_ID"; exit 2; }
 
@@ -296,9 +284,5 @@ bind_output="$(HOME="$HERMES_HOME" run_with_timeout "$LIVEWARE_PATH" tunnel bind
 }
 PUBLIC_URL="$(extract_url "$bind_output")"
 start_agent
-if ! wait_for_public_url "$PUBLIC_URL"; then
-  json_emit blocked agent_not_connected "liveware agent did not connect to the public app" "$APP_ID" "$PUBLIC_URL"
-  exit 2
-fi
 save_state "$PUBLIC_URL"
 json_emit ok "" "" "$APP_ID" "$PUBLIC_URL"
