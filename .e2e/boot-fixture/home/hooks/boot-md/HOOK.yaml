@@ -1,0 +1,4 @@
+name: boot-md
+description: Send one startup greeting through the active platform session
+events:
+  - gateway:startup

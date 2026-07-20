@@ -32,7 +32,7 @@ Inspect read-only facts first:
 - existing `BOOT.md`, `hooks/boot-md/HOOK.yaml`, and `hooks/boot-md/handler.py`;
 - the exact task inputs, commands, paths, readiness signals, ownership, and repeatability;
 - for Liveware, the target skill and its actual `setup.py`, `start.sh`, state contract, service lifecycle, readiness check, timeout behavior, and logs;
-- enabled gateway platforms, their home bindings, and existing Hermes Sessions only when delivery is requested; inspect the emitted startup context and the installed home-binding return type instead of assuming either interface.
+- enabled gateway platforms, their configured Home or platform-owned activation bindings, existing Hermes Sessions, and any live Gateway Session capability only when delivery is requested; inspect the emitted startup context and installed binding types instead of assuming those interfaces.
 
 Do not run setup, login, registration, service start, gateway restart, or external delivery during discovery.
 
@@ -46,7 +46,7 @@ Resolve applicable decisions in this order:
 2. Exact deterministic actions, ordering, readiness, timeout, idempotency, and failure behavior.
 3. Agent task, allowed tools, evidence, iteration limit, report shape, and exact silence token.
 4. Liveware policy: require prepared state, setup if a verified predicate fails, or setup on every boot; include external effects and retry cap.
-5. Output policy: log only, no output, or deliver through the configured home binding after it resolves to one existing Session.
+5. Output policy: log only, no output, or deliver through one authoritative platform binding after it resolves to or safely creates one exact Session.
 6. Static verification and any separately approved live test.
 
 Do not repeat questions already answered by the request or environment. When an interview was necessary, restate the resolved contract before writing. A direct request to create or update files is sufficient authorization to write the confirmed design; it is not authorization to execute its startup actions.
@@ -64,11 +64,16 @@ Preserve unrelated customizations and keep policy separate from mechanics.
 - Keep deterministic actions in the handler. Let the agent reason and produce a report; do not let it start Liveware or send the report.
 - Invoke only inspected Liveware scripts. Do not copy their login, app, tunnel, server, or readiness logic into the Hook.
 - Keep `BOOT.md` platform-neutral unless the startup task itself is platform-specific. Put platform and Session routing only in the handler.
-- Add delivery only when requested. Treat startup `context["platforms"]` as availability information, not a destination, and do not assume `session_store` is injected.
-- Require a selected platform, its configured home binding, and one exact existing Session before delivery. Never ask the user for raw routing coordinates or persist them in generated files.
-- Treat the home binding as a version-sensitive object. Resolve the Session from its internal origin and thread fields through the installed read-only lookup; never stringify the whole object or log those fields.
-- Do not choose the most recently updated Session, manufacture a Session at startup, or fall back to another platform. Fail closed when the home binding or Session is missing or ambiguous.
-- When an agent report exists only to be delivered, finish the routing preflight before invoking the model. Distinguish transport success from successful mirroring into the pre-resolved Session.
+- Add delivery only when requested. Treat startup `context["platforms"]` as availability information, not a destination, and do not assume a live `session_store` or narrower Session resolver is injected.
+- In the inspected Hermes `v2026.7.7.2` runtime, startup provides platform names only (`{"platforms": ["clawchat", ...]}`). Do not call methods on those strings or invent a chat target.
+- For ClawChat, read activation conversation and owner from the installed store. With `session_store`, build `SessionSource`, reuse/create the exact Session, and require mirror confirmation. Without it, use the installed target parser for transport-only delivery; do not claim Session continuity. Keep targets in memory only.
+- For a Hybrid greeting, read `BOOT.md`, invoke one bounded `AIAgent` turn with tools disabled, use only its non-empty final response as the message, then perform routing and delivery in the handler. The Agent must never select a platform or call delivery tools.
+- Write a bounded audit record for `hook_triggered`, `agent_start`, `agent_done` (response length only), `route_resolved`, transport result, mirror result, and full redacted exception details. This audit is diagnostic state, not user-facing content.
+- Require a selected platform and one authoritative binding: its configured Home or a platform-owned activation binding. Never ask the user for raw routing coordinates or persist them in generated files.
+- Treat each binding as a version-sensitive object. Resolve its complete origin and thread metadata internally; never stringify the whole object or log those fields.
+- Reuse the exact existing Session when one matches. When none matches, permit the live Gateway-owned Session capability to get or create one only from the complete authoritative source and retain the returned Session as the delivery contract.
+- Do not choose the most recently updated Session, construct another Session store, guess missing source fields, or fall back to another platform. A Home on another platform is irrelevant. Fail closed when activation is missing/incomplete; if Session capability is absent, report activation-only continuity as unverified.
+- When an agent report exists only to be delivered, finish the routing preflight before invoking the model. Distinguish transport success from successful mirroring into the retained resolved-or-created Session.
 - After confirmed mirroring, document that the next inbound message with the same full origin reuses that active Session unless Hermes applies an explicit or policy reset.
 - Never mutate Hermes Session files or databases directly and never reach through private gateway-runner state to manufacture continuity.
 
@@ -81,7 +86,7 @@ Perform every applicable static check:
 3. Import it with external actions stubbed and confirm `handle()` returns promptly and suppresses duplicate workers.
 4. Confirm the active-home resolver, runtime model resolution, iteration bound, timeout/retry bounds, and whole-response silence comparison.
 5. Confirm each deterministic branch matches the resolved policy and cannot loop indefinitely.
-6. Confirm delivery cannot run without a configured home binding and one exact Session, extracts the installed home object's fields instead of stringifying it, contains no embedded routing coordinates, parses the installed interface's result, and logs delivery and mirroring separately.
-7. Scan for placeholders, TODOs, secrets, embedded destinations, recency-based Session selection, startup Session creation, unbounded output, `shell=True`, hard-coded default-home paths, private gateway globals, and direct Session mutation.
+6. Confirm delivery cannot run without an authoritative binding and one exact resolved or safely created Session, extracts the installed binding object's fields instead of stringifying it, uses only the live Gateway-owned Session capability for creation, contains no embedded routing coordinates, parses the installed interface's result, and logs delivery and mirroring separately.
+7. Scan for placeholders, TODOs, secrets, embedded destinations, recency-based Session selection, secondary Session stores, guessed Session sources, unbounded output, `shell=True`, hard-coded default-home paths, private gateway globals, and direct Session mutation.
 
-Treat setup, start, login, registration, gateway restart, and real delivery as live tests. Run each only with separate explicit approval. For a delivery E2E, establish the intended Session with one normal inbound message before installing and starting the Hook, then verify the visible message and its mirror in that same pre-existing Session. Report the selected mode, changed files, static evidence, unperformed live tests, and any delivery-continuity limitation.
+Treat setup, start, login, registration, gateway restart, and real delivery as live tests. Run each only with separate explicit approval. For a reuse E2E, establish the intended Session with one normal inbound message before installing the Hook. For a creation E2E, establish only the authoritative platform binding and confirm that no matching Session exists. In either case, verify the visible message, exactly one resolved or created Session, its mirror in that Session, and a later reply reusing it. Report the selected mode, changed files, static evidence, unperformed live tests, and any delivery-continuity limitation.
